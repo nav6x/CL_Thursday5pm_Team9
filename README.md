@@ -4,7 +4,11 @@ FIT2101 S2 2026 group repository.
 
 ## Team
 
-Add your team members and roles here.
+Ayden L
+Yahye Q
+Nilay K
+Nava S
+Kaveen S
 
 ## Getting Started
 
