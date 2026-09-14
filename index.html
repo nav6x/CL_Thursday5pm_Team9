@@ -3,106 +3,143 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DevWorkspace - Agile Workspace & Time Tracker</title>
+  <title>DevEngine - Workspace</title>
   <link rel="stylesheet" href="style.css">
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-  <div class="app-container">
-    <!-- Sidebar Navigation -->
+  <div class="app-layout">
+    <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="workspace-header">
-        <i data-lucide="terminal"></i>
-        <span>DevEngine Workspace</span>
-      </div>
-      <nav class="sidebar-menu">
-        <button class="nav-item active" data-tab="dashboard"><i data-lucide="layout-dashboard"></i> Sprint Dashboard</button>
-        <button class="nav-item" data-tab="editor"><i data-lucide="file-text"></i> Specs & Notes</button>
-        <button class="nav-item" data-tab="timer"><i data-lucide="timer"></i> Focus & Time Log</button>
-      </nav>
-      <div class="sidebar-footer">
-        <div class="sprint-info">
-          <small>CURRENT SPRINT</small>
-          <p>Sprint 42 (v2.4.0)</p>
+      <div class="workspace-picker">
+        <div class="avatar-icon"><i class="fa-solid fa-code"></i></div>
+        <div class="workspace-info">
+          <span class="workspace-name">kaveen silva's Space</span>
+          <span class="workspace-role">Software Engineering</span>
         </div>
+        <i class="fa-solid fa-chevron-down chevron"></i>
+      </div>
+
+      <div class="sidebar-search">
+        <i class="fa-solid fa-magnifying-glass"></i> Search or ask AI...
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">ENGINEERING WORKSPACE</div>
+        <a href="#" class="nav-item active" data-tab="dashboard">
+          <i class="fa-solid fa-kanban"></i> Sprint Kanban
+        </a>
+        <a href="#" class="nav-item" data-tab="specs">
+          <i class="fa-solid fa-book-open"></i> Technical Specs
+        </a>
+        <a href="#" class="nav-item" data-tab="timer">
+          <i class="fa-solid fa-clock"></i> Focus & Time Track
+        </a>
+
+        <div class="nav-section-title">PROJECT UNITS & MODULES</div>
+        <a href="#" class="nav-item page-link"><i class="fa-solid fa-file-code"></i> FIT2107 - Software Testing</a>
+        <a href="#" class="nav-item page-link"><i class="fa-solid fa-file-lines"></i> BFC3140 - Systems Architecture</a>
+        <a href="#" class="nav-item page-link"><i class="fa-solid fa-file-waveform"></i> BFC3341 - Microservices</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="ai-button">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <span>Ask Notion AI...</span>
+        </button>
       </div>
     </aside>
 
-    <!-- Main Content Area -->
-    <main class="content-area">
-      
-      <!-- TAB 1: SPRINT DASHBOARD -->
-      <section id="dashboard" class="tab-content active">
-        <header class="section-header">
-          <div>
-            <h1>Sprint Kanban & Task Queue</h1>
-            <p>Manage backlog items, PR reviews, and sprint deadlines.</p>
-          </div>
-          <button class="btn btn-primary" id="add-task-btn"><i data-lucide="plus"></i> New Task</button>
-        </header>
+    <!-- Main Workspace Container -->
+    <main class="main-content">
+      <!-- Top Header Navigation Bar -->
+      <header class="top-bar">
+        <div class="breadcrumb">
+          <i class="fa-solid fa-sidebar sidebar-toggle"></i>
+          <span class="path-segment">kaveen silva's Space</span> /
+          <span class="path-current" id="current-page-title">Sprint Kanban</span>
+        </div>
+        <div class="top-actions">
+          <span class="badge badge-purple"><i class="fa-solid fa-bolt"></i> Sprint 42</span>
+          <button class="icon-btn"><i class="fa-solid fa-share"></i></button>
+          <button class="icon-btn"><i class="fa-solid fa-ellipsis"></i></button>
+        </div>
+      </header>
 
-        <div class="kanban-board">
-          <!-- Column 1 -->
-          <div class="kanban-column" id="col-backlog">
-            <div class="column-header">
-              <span class="status-indicator backlog"></span> Backlog
-            </div>
-            <div class="task-list" id="list-backlog"></div>
+      <div class="content-body">
+        <!-- TAB 1: SPRINT KANBAN -->
+        <div id="tab-dashboard" class="tab-page active">
+          <div class="page-title-block">
+            <div class="page-icon">🗓️</div>
+            <h1>Sprint Kanban & Task Board</h1>
+            <p class="page-description">Track user stories, pull request code reviews, and upcoming engineering deadlines.</p>
           </div>
-          <!-- Column 2 -->
-          <div class="kanban-column" id="col-in-progress">
-            <div class="column-header">
-              <span class="status-indicator in-progress"></span> In Progress
+
+          <!-- Notion-style Colored Callout Box -->
+          <div class="notion-callout callout-green">
+            <div class="callout-icon">💡</div>
+            <div class="callout-text">
+              <strong>Sprint Goal:</strong> Complete the Payment Gateway refactor and ensure all Unit Tests pass 100% coverage in FIT2107 environment.
             </div>
-            <div class="task-list" id="list-in-progress"></div>
           </div>
-          <!-- Column 3 -->
-          <div class="kanban-column" id="col-review">
-            <div class="column-header">
-              <span class="status-indicator review"></span> Code Review
-            </div>
-            <div class="task-list" id="list-review"></div>
+
+          <div class="kanban-controls">
+            <button class="btn btn-primary" id="add-task-btn"><i class="fa-solid fa-plus"></i> New Task</button>
           </div>
-          <!-- Column 4 -->
-          <div class="kanban-column" id="col-done">
-            <div class="column-header">
-              <span class="status-indicator done"></span> Done
+
+          <div class="kanban-grid">
+            <div class="kanban-col" id="col-backlog">
+              <div class="col-header"><span class="pill pill-grey">Backlog</span> <span class="count">1</span></div>
+              <div class="card-container" id="list-backlog"></div>
             </div>
-            <div class="task-list" id="list-done"></div>
+
+            <div class="kanban-col" id="col-in-progress">
+              <div class="col-header"><span class="pill pill-blue">In Progress</span> <span class="count">1</span></div>
+              <div class="card-container" id="list-in-progress"></div>
+            </div>
+
+            <div class="kanban-col" id="col-review">
+              <div class="col-header"><span class="pill pill-orange">Code Review</span> <span class="count">1</span></div>
+              <div class="card-container" id="list-review"></div>
+            </div>
+
+            <div class="kanban-col" id="col-done">
+              <div class="col-header"><span class="pill pill-green">Done</span> <span class="count">0</span></div>
+              <div class="card-container" id="list-done"></div>
+            </div>
           </div>
         </div>
-      </section>
 
-      <!-- TAB 2: NOTION-STYLE DOCUMENT EDITOR -->
-      <section id="editor" class="tab-content">
-        <header class="section-header">
-          <div>
-            <h1>Technical Specs & Architecture Notes</h1>
-            <p>Interactive block-based document layout for specs and post-mortems.</p>
+        <!-- TAB 2: TECHNICAL SPECS (NOTION EDITOR) -->
+        <div id="tab-specs" class="tab-page">
+          <div class="page-title-block">
+            <div class="page-icon">⚡</div>
+            <input type="text" class="notion-title-input" value="RFC-104: Payment Gateway Integration">
+            <div class="notion-meta-row">
+              <span class="meta-tag"><i class="fa-solid fa-user"></i> Lead Dev</span>
+              <span class="meta-tag pill-purple">Draft</span>
+              <span class="meta-tag"><i class="fa-solid fa-code-branch"></i> v2.4.0</span>
+            </div>
           </div>
-          <button class="btn btn-secondary" id="add-code-block"><i data-lucide="code"></i> Add Code Block</button>
-        </header>
 
-        <div class="notion-editor">
-          <input type="text" class="doc-title" placeholder="Untitled Feature Spec..." value="RFC-104: Payment Gateway Microservice Integration">
-          <div class="doc-meta">
-            <span><strong>Author:</strong> Lead Dev</span> • 
-            <span><strong>Status:</strong> Draft</span> • 
-            <span><strong>Target Release:</strong> v2.4.0</span>
+          <div class="notion-callout callout-purple">
+            <div class="callout-icon">✨</div>
+            <div class="callout-text">
+              <strong>Notion AI Summary:</strong> This specification details the microservice webhook handlers with exponential backoff retry parameters.
+            </div>
           </div>
-          <hr class="divider">
 
-          <div id="blocks-container">
-            <div class="block text-block" contenteditable="true" placeholder="Type '/' for commands or start typing text...">
+          <div class="editor-blocks" id="editor-blocks">
+            <div class="block text-block" contenteditable="true">
               This document outlines the architecture for integrating the new billing engine using idempotent webhooks.
             </div>
+
             <div class="block code-block">
-              <div class="code-header">
+              <div class="code-top">
                 <span>POST /api/v1/payments/webhook</span>
-                <span class="lang-tag">JSON</span>
+                <span class="lang-label">JSON</span>
               </div>
-              <pre contenteditable="true"><code>{
+              <pre><code>{
   "event_id": "evt_998231",
   "status": "completed",
   "payload": {
@@ -111,78 +148,73 @@
   }
 }</code></pre>
             </div>
-            <div class="block text-block" contenteditable="true" placeholder="Continue typing...">
-              Ensure retries handle 5xx errors with exponential backoff before marking tasks as failed.
-            </div>
-          </div>
-        </div>
-      </section>
 
-      <!-- TAB 3: FOCUS TIMER & LOGS -->
-      <section id="timer" class="tab-content">
-        <header class="section-header">
-          <div>
-            <h1>Time Tracking & Focus Logs</h1>
-            <p>Track deep-work coding sessions and log time against tasks.</p>
-          </div>
-        </header>
-
-        <div class="timer-grid">
-          <div class="card timer-card">
-            <h2>Pomodoro Focus Session</h2>
-            <div class="timer-display" id="time-display">25:00</div>
-            <div class="timer-controls">
-              <button class="btn btn-primary" id="start-timer"><i data-lucide="play"></i> Start Focus</button>
-              <button class="btn btn-secondary" id="pause-timer"><i data-lucide="pause"></i> Pause</button>
-              <button class="btn btn-danger" id="reset-timer"><i data-lucide="rotate-ccw"></i> Reset</button>
+            <div class="block text-block" contenteditable="true">
+              Ensure retries handle 5xx errors gracefully before marking tasks as failed.
             </div>
           </div>
 
-          <div class="card log-card">
-            <h2>Logged Engineering Time</h2>
-            <ul class="time-log-list" id="time-log-list">
-              <li>
-                <span>Refactoring Authentication Module</span>
-                <span class="badge">2h 30m</span>
-              </li>
-              <li>
-                <span>PR Review: #402 Gateway Fix</span>
-                <span class="badge">0h 45m</span>
-              </li>
-            </ul>
+          <button class="btn btn-secondary" id="add-block-btn"><i class="fa-solid fa-plus"></i> Add Code Block</button>
+        </div>
+
+        <!-- TAB 3: FOCUS TIMER -->
+        <div id="tab-timer" class="tab-page">
+          <div class="page-title-block">
+            <div class="page-icon">⏱️</div>
+            <h1>Focus Timer & Time Track</h1>
+            <p class="page-description">Sprint session management with built-in Notion AI task logging.</p>
+          </div>
+
+          <div class="timer-flex">
+            <div class="timer-card">
+              <h2>Pomodoro Deep Work</h2>
+              <div class="timer-clock" id="timer-display">25:00</div>
+              <div class="timer-actions">
+                <button class="btn btn-primary" id="btn-start"><i class="fa-solid fa-play"></i> Start</button>
+                <button class="btn btn-secondary" id="btn-pause"><i class="fa-solid fa-pause"></i> Pause</button>
+                <button class="btn btn-danger" id="btn-reset"><i class="fa-solid fa-rotate-right"></i> Reset</button>
+              </div>
+            </div>
+
+            <div class="log-card">
+              <h2>Logged Sprint Hours</h2>
+              <ul class="log-list">
+                <li><span>FIT2107 Automation Suite</span> <span class="badge pill-blue">2h 30m</span></li>
+                <li><span>PR #402 Code Review</span> <span class="badge pill-green">0h 45m</span></li>
+                <li><span>BFC3140 Architecture Diagram</span> <span class="badge pill-purple">1h 15m</span></li>
+              </ul>
+            </div>
           </div>
         </div>
-      </section>
-
+      </div>
     </main>
   </div>
 
-  <!-- Modal for Creating Tasks -->
+  <!-- Task Modal -->
   <div class="modal" id="task-modal">
-    <div class="modal-content">
-      <h2>Create Engineering Task</h2>
+    <div class="modal-box">
+      <h3>Add New Engineering Task</h3>
       <form id="task-form">
-        <div class="form-group">
+        <div class="field">
           <label>Task Title</label>
-          <input type="text" id="task-title" placeholder="e.g. Implement OAuth2 Refresh Token Strategy" required>
+          <input type="text" id="task-title" placeholder="e.g. Implement OAuth Refresh Token" required>
         </div>
-        <div class="form-group">
-          <label>Assignee / Role</label>
+        <div class="field">
+          <label>Assignee</label>
           <input type="text" id="task-assignee" placeholder="e.g. Backend Lead" required>
         </div>
-        <div class="form-group">
-          <label>Estimate (Story Points)</label>
+        <div class="field">
+          <label>Story Points</label>
           <select id="task-points">
-            <option value="1">1 Point</option>
-            <option value="2">2 Points</option>
-            <option value="3" selected>3 Points</option>
-            <option value="5">5 Points</option>
-            <option value="8">8 Points</option>
+            <option value="1">1 Pt</option>
+            <option value="2">2 Pts</option>
+            <option value="3" selected>3 Pts</option>
+            <option value="5">5 Pts</option>
           </select>
         </div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-secondary" id="close-modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Create Task</button>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" id="close-modal-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Task</button>
         </div>
       </form>
     </div>

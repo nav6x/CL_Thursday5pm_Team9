@@ -1,28 +1,26 @@
-// Initialize Icons
-lucide.createIcons();
+// Navigation setup
+const navItems = document.querySelectorAll('.nav-item[data-tab]');
+const tabPages = document.querySelectorAll('.tab-page');
+const currentPageTitle = document.getElementById('current-page-title');
 
-// --- Tab Navigation ---
-const navItems = document.querySelectorAll('.nav-item');
-const tabContents = document.querySelectorAll('.tab-content');
-
-navItems.forEach(function(item) {
-  item.addEventListener('click', function() {
-    navItems.forEach(function(i) { i.classList.remove('active'); });
-    tabContents.forEach(function(c) { c.classList.remove('active'); });
+navItems.forEach(item => {
+  item.addEventListener('click', (e) => {
+    e.preventDefault();
+    navItems.forEach(i => i.classList.remove('active'));
+    tabPages.forEach(p => p.classList.remove('active'));
 
     item.classList.add('active');
-    document.getElementById(item.dataset.tab).classList.add('active');
+    const tabId = item.dataset.tab;
+    document.getElementById('tab-' + tabId).classList.add('active');
+
+    // Update page path title
+    if (tabId === 'dashboard') currentPageTitle.textContent = 'Sprint Kanban';
+    if (tabId === 'specs') currentPageTitle.textContent = 'Technical Specs';
+    if (tabId === 'timer') currentPageTitle.textContent = 'Focus & Time Track';
   });
 });
 
-// --- Kanban Task Management & Drag-and-Drop ---
-const taskLists = document.querySelectorAll('.task-list');
-const addTaskBtn = document.getElementById('add-task-btn');
-const taskModal = document.getElementById('task-modal');
-const closeModal = document.getElementById('close-modal');
-const taskForm = document.getElementById('task-form');
-
-// Default initial tasks
+// Kanban Tasks Data
 const tasks = [
   { id: '1', title: 'Migrate DB to Postgres v15', assignee: 'Dev Ops', points: 5, status: 'backlog' },
   { id: '2', title: 'Implement Auth Refresh Tokens', assignee: 'Backend Lead', points: 3, status: 'in-progress' },
@@ -30,163 +28,110 @@ const tasks = [
 ];
 
 function renderTasks() {
-  taskLists.forEach(function(list) { list.innerHTML = ''; });
+  document.querySelectorAll('.card-container').forEach(c => c.innerHTML = '');
 
-  tasks.forEach(function(task) {
+  tasks.forEach(task => {
     const card = document.createElement('div');
     card.className = 'task-card';
     card.draggable = true;
     card.dataset.id = task.id;
 
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'task-title';
-    titleDiv.textContent = task.title;
+    const title = document.createElement('div');
+    title.className = 'task-title';
+    title.textContent = task.title;
 
-    const footerDiv = document.createElement('div');
-    footerDiv.className = 'task-footer';
+    const footer = document.createElement('div');
+    footer.className = 'task-footer';
+    footer.innerHTML = `<span>👤 ${task.assignee}</span> <span class="pill pill-grey">${task.points} pts</span>`;
 
-    const assigneeSpan = document.createElement('span');
-    assigneeSpan.textContent = '👤 ' + task.assignee;
+    card.appendChild(title);
+    card.appendChild(footer);
 
-    const pointsSpan = document.createElement('span');
-    pointsSpan.className = 'points-tag';
-    pointsSpan.textContent = task.points + ' pts';
-
-    footerDiv.appendChild(assigneeSpan);
-    footerDiv.appendChild(pointsSpan);
-
-    card.appendChild(titleDiv);
-    card.appendChild(footerDiv);
-
-    card.addEventListener('dragstart', function(e) {
+    card.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', task.id);
     });
 
     const targetList = document.getElementById('list-' + task.status);
-    if (targetList) {
-      targetList.appendChild(card);
-    }
+    if (targetList) targetList.appendChild(card);
   });
 }
 
-// Drag & Drop event listeners
-taskLists.forEach(function(list) {
-  list.addEventListener('dragover', function(e) {
+// Drag & Drop
+document.querySelectorAll('.kanban-col').forEach(col => {
+  col.addEventListener('dragover', (e) => e.preventDefault());
+  col.addEventListener('drop', (e) => {
     e.preventDefault();
-  });
-  
-  list.addEventListener('drop', function(e) {
-    e.preventDefault();
-    const taskId = e.dataTransfer.getData('text/plain');
-    const newStatus = list.id.replace('list-', '');
-    
-    const task = tasks.find(function(t) { return t.id === taskId; });
+    const id = e.dataTransfer.getData('text/plain');
+    const status = col.id.replace('col-', '');
+    const task = tasks.find(t => t.id === id);
     if (task) {
-      task.status = newStatus;
+      task.status = status;
       renderTasks();
     }
   });
 });
 
-// Modal Logic
-addTaskBtn.addEventListener('click', function() {
-  taskModal.classList.add('active');
-});
+// Modal Actions
+const modal = document.getElementById('task-modal');
+document.getElementById('add-task-btn').onclick = () => modal.classList.add('active');
+document.getElementById('close-modal-btn').onclick = () => modal.classList.remove('active');
 
-closeModal.addEventListener('click', function() {
-  taskModal.classList.remove('active');
-});
-
-taskForm.addEventListener('submit', function(e) {
+document.getElementById('task-form').onsubmit = (e) => {
   e.preventDefault();
-  const newTask = {
+  tasks.push({
     id: Date.now().toString(),
     title: document.getElementById('task-title').value,
     assignee: document.getElementById('task-assignee').value,
     points: document.getElementById('task-points').value,
     status: 'backlog'
-  };
-  
-  tasks.push(newTask);
+  });
   renderTasks();
-  taskModal.classList.remove('active');
-  taskForm.reset();
-});
+  modal.classList.remove('active');
+  e.target.reset();
+};
 
-// --- Notion-style Document Block Extension ---
-const addCodeBlockBtn = document.getElementById('add-code-block');
-const blocksContainer = document.getElementById('blocks-container');
+// Add Code Block in Specs
+document.getElementById('add-block-btn').onclick = () => {
+  const block = document.createElement('div');
+  block.className = 'block code-block';
+  block.innerHTML = `
+    <div class="code-top"><span>New Snippet</span><span class="lang-label">Code</span></div>
+    <pre contenteditable="true"><code>// Type code here...</code></pre>
+  `;
+  document.getElementById('editor-blocks').appendChild(block);
+};
 
-addCodeBlockBtn.addEventListener('click', function() {
-  const codeBlock = document.createElement('div');
-  codeBlock.className = 'block code-block';
+// Focus Timer
+let seconds = 1500;
+let timer = null;
+const display = document.getElementById('timer-display');
 
-  const header = document.createElement('div');
-  header.className = 'code-header';
-
-  const titleSpan = document.createElement('span');
-  titleSpan.textContent = 'Snippet / Command';
-
-  const langSpan = document.createElement('span');
-  langSpan.className = 'lang-tag';
-  langSpan.textContent = 'Code';
-
-  header.appendChild(titleSpan);
-  header.appendChild(langSpan);
-
-  const pre = document.createElement('pre');
-  pre.contentEditable = "true";
-
-  const code = document.createElement('code');
-  code.textContent = '// Add your code or log output here...';
-
-  pre.appendChild(code);
-  codeBlock.appendChild(header);
-  codeBlock.appendChild(pre);
-
-  blocksContainer.appendChild(codeBlock);
-});
-
-// --- Time Tracking & Focus Timer ---
-let timerInterval = null;
-let secondsRemaining = 25 * 60; // 25 Minutes
-
-const timeDisplay = document.getElementById('time-display');
-const startBtn = document.getElementById('start-timer');
-const pauseBtn = document.getElementById('pause-timer');
-const resetBtn = document.getElementById('reset-timer');
-
-function updateTimerDisplay() {
-  const mins = Math.floor(secondsRemaining / 60);
-  const secs = secondsRemaining % 60;
-  timeDisplay.textContent = mins.toString().padStart(2, '0') + ':' + secs.toString().padStart(2, '0');
+function updateDisplay() {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  display.textContent = `${m}:${s}`;
 }
 
-startBtn.addEventListener('click', function() {
-  if (timerInterval) return;
-  timerInterval = setInterval(function() {
-    if (secondsRemaining > 0) {
-      secondsRemaining--;
-      updateTimerDisplay();
-    } else {
-      clearInterval(timerInterval);
-      timerInterval = null;
-      alert('Focus session complete!');
+document.getElementById('btn-start').onclick = () => {
+  if (timer) return;
+  timer = setInterval(() => {
+    if (seconds > 0) {
+      seconds--;
+      updateDisplay();
     }
   }, 1000);
-});
+};
 
-pauseBtn.addEventListener('click', function() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-});
+document.getElementById('btn-pause').onclick = () => {
+  clearInterval(timer);
+  timer = null;
+};
 
-resetBtn.addEventListener('click', function() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-  secondsRemaining = 25 * 60;
-  updateTimerDisplay();
-});
+document.getElementById('btn-reset').onclick = () => {
+  clearInterval(timer);
+  timer = null;
+  seconds = 1500;
+  updateDisplay();
+};
 
-// Initial Render
 renderTasks();
