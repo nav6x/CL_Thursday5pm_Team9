@@ -3,16 +3,189 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Deploy Test Page</title>
+  <title>DevWorkspace - Agile Workspace & Time Tracker</title>
   <link rel="stylesheet" href="style.css">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-  <div class="card">
-    <h1>✅ It works!</h1>
-    <p>If you can see this page, your static frontend deployed successfully.</p>
-    <p id="clock">Loading time...</p>
-    <button id="testBtn">Click to test JavaScript</button>
-    <p id="clickResult"></p>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="workspace-header">
+        <i data-lucide="terminal"></i>
+        <span>DevEngine Workspace</span>
+      </div>
+      <nav class="sidebar-menu">
+        <button class="nav-item active" data-tab="dashboard"><i data-lucide="layout-dashboard"></i> Sprint Dashboard</button>
+        <button class="nav-item" data-tab="editor"><i data-lucide="file-text"></i> Specs & Notes</button>
+        <button class="nav-item" data-tab="timer"><i data-lucide="timer"></i> Focus & Time Log</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sprint-info">
+          <small>CURRENT SPRINT</small>
+          <p>Sprint 42 (v2.4.0)</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="content-area">
+      
+      <!-- TAB 1: SPRINT DASHBOARD -->
+      <section id="dashboard" class="tab-content active">
+        <header class="section-header">
+          <div>
+            <h1>Sprint Kanban & Task Queue</h1>
+            <p>Manage backlog items, PR reviews, and sprint deadlines.</p>
+          </div>
+          <button class="btn btn-primary" id="add-task-btn"><i data-lucide="plus"></i> New Task</button>
+        </header>
+
+        <div class="kanban-board">
+          <!-- Column 1 -->
+          <div class="kanban-column" id="col-backlog">
+            <div class="column-header">
+              <span class="status-indicator backlog"></span> Backlog
+            </div>
+            <div class="task-list" id="list-backlog"></div>
+          </div>
+          <!-- Column 2 -->
+          <div class="kanban-column" id="col-in-progress">
+            <div class="column-header">
+              <span class="status-indicator in-progress"></span> In Progress
+            </div>
+            <div class="task-list" id="list-in-progress"></div>
+          </div>
+          <!-- Column 3 -->
+          <div class="kanban-column" id="col-review">
+            <div class="column-header">
+              <span class="status-indicator review"></span> Code Review
+            </div>
+            <div class="task-list" id="list-review"></div>
+          </div>
+          <!-- Column 4 -->
+          <div class="kanban-column" id="col-done">
+            <div class="column-header">
+              <span class="status-indicator done"></span> Done
+            </div>
+            <div class="task-list" id="list-done"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: NOTION-STYLE DOCUMENT EDITOR -->
+      <section id="editor" class="tab-content">
+        <header class="section-header">
+          <div>
+            <h1>Technical Specs & Architecture Notes</h1>
+            <p>Interactive block-based document layout for specs and post-mortems.</p>
+          </div>
+          <button class="btn btn-secondary" id="add-code-block"><i data-lucide="code"></i> Add Code Block</button>
+        </header>
+
+        <div class="notion-editor">
+          <input type="text" class="doc-title" placeholder="Untitled Feature Spec..." value="RFC-104: Payment Gateway Microservice Integration">
+          <div class="doc-meta">
+            <span><strong>Author:</strong> Lead Dev</span> • 
+            <span><strong>Status:</strong> Draft</span> • 
+            <span><strong>Target Release:</strong> v2.4.0</span>
+          </div>
+          <hr class="divider">
+
+          <div id="blocks-container">
+            <div class="block text-block" contenteditable="true" placeholder="Type '/' for commands or start typing text...">
+              This document outlines the architecture for integrating the new billing engine using idempotent webhooks.
+            </div>
+            <div class="block code-block">
+              <div class="code-header">
+                <span>POST /api/v1/payments/webhook</span>
+                <span class="lang-tag">JSON</span>
+              </div>
+              <pre contenteditable="true"><code>{
+  "event_id": "evt_998231",
+  "status": "completed",
+  "payload": {
+    "amount": 4900,
+    "currency": "USD"
+  }
+}</code></pre>
+            </div>
+            <div class="block text-block" contenteditable="true" placeholder="Continue typing...">
+              Ensure retries handle 5xx errors with exponential backoff before marking tasks as failed.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: FOCUS TIMER & LOGS -->
+      <section id="timer" class="tab-content">
+        <header class="section-header">
+          <div>
+            <h1>Time Tracking & Focus Logs</h1>
+            <p>Track deep-work coding sessions and log time against tasks.</p>
+          </div>
+        </header>
+
+        <div class="timer-grid">
+          <div class="card timer-card">
+            <h2>Pomodoro Focus Session</h2>
+            <div class="timer-display" id="time-display">25:00</div>
+            <div class="timer-controls">
+              <button class="btn btn-primary" id="start-timer"><i data-lucide="play"></i> Start Focus</button>
+              <button class="btn btn-secondary" id="pause-timer"><i data-lucide="pause"></i> Pause</button>
+              <button class="btn btn-danger" id="reset-timer"><i data-lucide="rotate-ccw"></i> Reset</button>
+            </div>
+          </div>
+
+          <div class="card log-card">
+            <h2>Logged Engineering Time</h2>
+            <ul class="time-log-list" id="time-log-list">
+              <li>
+                <span>Refactoring Authentication Module</span>
+                <span class="badge">2h 30m</span>
+              </li>
+              <li>
+                <span>PR Review: #402 Gateway Fix</span>
+                <span class="badge">0h 45m</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modal for Creating Tasks -->
+  <div class="modal" id="task-modal">
+    <div class="modal-content">
+      <h2>Create Engineering Task</h2>
+      <form id="task-form">
+        <div class="form-group">
+          <label>Task Title</label>
+          <input type="text" id="task-title" placeholder="e.g. Implement OAuth2 Refresh Token Strategy" required>
+        </div>
+        <div class="form-group">
+          <label>Assignee / Role</label>
+          <input type="text" id="task-assignee" placeholder="e.g. Backend Lead" required>
+        </div>
+        <div class="form-group">
+          <label>Estimate (Story Points)</label>
+          <select id="task-points">
+            <option value="1">1 Point</option>
+            <option value="2">2 Points</option>
+            <option value="3" selected>3 Points</option>
+            <option value="5">5 Points</option>
+            <option value="8">8 Points</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="close-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Task</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script src="script.js"></script>
