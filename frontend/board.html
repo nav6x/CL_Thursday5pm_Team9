@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Board — Corkboard</title>
+  <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <h1 id="projectName">Loading…<span class="role-badge" id="roleBadge"></span></h1>
+    </div>
+    <div class="topbar-user">
+      <span id="userName"></span>
+      <button class="btn-ghost" id="logoutBtn">Log out</button>
+    </div>
+  </div>
+
+  <div class="board" id="board">
+    <!-- columns injected here by board.js -->
+  </div>
+
+  <!-- Task creation / edit modal -->
+  <div class="modal-overlay" id="taskModalOverlay">
+    <div class="modal">
+      <h2 id="modalTitle">New task</h2>
+      <form id="taskForm">
+        <div class="field">
+          <label for="taskName">Name</label>
+          <input type="text" id="taskName" placeholder="e.g. Wire up login endpoint" required>
+        </div>
+        <div class="field">
+          <label for="taskDescription">Description</label>
+          <textarea id="taskDescription" rows="3" placeholder="What needs to happen here?"></textarea>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="taskPriority">Priority</label>
+            <select id="taskPriority">
+              <option value="high">High</option>
+              <option value="medium" selected>Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="taskPoints">Story points</label>
+            <input type="number" id="taskPoints" min="0" max="10" value="1">
+          </div>
+        </div>
+        <div class="field">
+          <label for="taskAssignees">Assignees</label>
+          <select id="taskAssignees" multiple size="4"></select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="cancelTaskBtn">Cancel</button>
+          <button type="submit" class="btn-primary" style="width:auto; padding-left:1.2rem; padding-right:1.2rem;">Save task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="static/js/api.js"></script>
+  <script src="static/js/toast.js"></script>
+  <script src="static/js/board.js"></script>
+</body>
+</html>

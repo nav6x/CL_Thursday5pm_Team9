@@ -1,0 +1,77 @@
+let mode = "login"; // or "signup"
+
+const form = document.getElementById("authForm");
+const nameField = document.getElementById("nameField");
+const fullNameInput = document.getElementById("fullName");
+const formTitle = document.getElementById("formTitle");
+const formSubtitle = document.getElementById("formSubtitle");
+const submitBtn = document.getElementById("submitBtn");
+const switchPrompt = document.getElementById("switchPrompt");
+const switchLink = document.getElementById("switchLink");
+const errorBox = document.getElementById("formError");
+
+// If already logged in, skip straight to the board.
+if (getToken()) window.location.href = "board.html";
+
+switchLink.addEventListener("click", (e) => {
+  e.preventDefault();
+  mode = mode === "login" ? "signup" : "login";
+  updateFormMode();
+});
+
+function updateFormMode() {
+  errorBox.style.display = "none";
+  if (mode === "signup") {
+    nameField.style.display = "flex";
+    fullNameInput.required = true;
+    formTitle.textContent = "Create your account";
+    formSubtitle.textContent = "Set up a login for your project board.";
+    submitBtn.textContent = "Sign up";
+    switchPrompt.textContent = "Already have an account?";
+    switchLink.textContent = "Log in";
+  } else {
+    nameField.style.display = "none";
+    fullNameInput.required = false;
+    formTitle.textContent = "Welcome back";
+    formSubtitle.textContent = "Log in to see what your team's working on.";
+    submitBtn.textContent = "Log in";
+    switchPrompt.textContent = "New here?";
+    switchLink.textContent = "Create an account";
+  }
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  errorBox.style.display = "none";
+
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const originalLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = mode === "signup" ? "Creating account…" : "Logging in…";
+
+  try {
+    if (mode === "signup") {
+      const fullName = fullNameInput.value.trim();
+      await api("/auth/signup", { method: "POST", body: { email, password, full_name: fullName } });
+      mode = "login";
+      updateFormMode();
+      errorBox.textContent = "Account created — you can log in now.";
+      errorBox.style.color = "#2F6F6B";
+      errorBox.style.background = "#EAF2F1";
+      errorBox.style.display = "block";
+    } else {
+      const data = await api("/auth/login", { method: "POST", body: { email, password } });
+      setSession(data.access_token, data.user);
+      window.location.href = "board.html";
+    }
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.style.color = "#A8402F";
+    errorBox.style.background = "#FBEAE7";
+    errorBox.style.display = "block";
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
+  }
+});
