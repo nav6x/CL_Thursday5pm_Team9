@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
-from config import supabase
-from auth_utils import login_required, require_role
+from Test_Branch.config import supabase
+from Test_Branch.auth_utils import login_required, require_role
 
 columns_bp = Blueprint("columns", __name__, url_prefix="/api/projects/<project_id>/columns")
 

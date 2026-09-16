@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, g
-from config import supabase
-from auth_utils import login_required, require_role
+from Test_Branch.config import supabase
+from Test_Branch.auth_utils import login_required, require_role
 
 projects_bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 
