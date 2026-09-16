@@ -1,11 +1,11 @@
 // ---- Guard: must be logged in ----
-if (!getToken()) window.location.href = "login.html";
+if (!getToken()) window.location.href = "index.html";
 
 const user = getUser();
 document.getElementById("userName").textContent = user?.email || "";
 document.getElementById("logoutBtn").addEventListener("click", () => {
   clearSession();
-  window.location.href = "login.html";
+  window.location.href = "index.html";
 });
 
 let currentProject = null;
@@ -32,33 +32,56 @@ function showLoadingSkeleton() {
 async function init() {
   showLoadingSkeleton();
   try {
-    // For this MVP we load the first project the user belongs to.
-    // A project switcher dropdown is the natural next addition here.
-    const projects = await api("/projects");
-    if (!projects.length) {
-      boardEl.innerHTML = `
-        <div class="board-empty">
-          <h2>No project yet</h2>
-          <p>Ask a Project Leader to add you to their board, or create your
-          own project to get started.</p>
-        </div>`;
-      return;
+    let projects = await api("/projects");
+
+    // If the user has no project, auto-create one
+    if (!projects || projects.length === 0) {
+      await api("/projects", {
+        method: "POST",
+        body: { name: "My First Project" },
+      });
+
+      // Refetch projects to get complete details including my_role
+      projects = await api("/projects");
     }
+
     currentProject = projects[0];
     currentRole = currentProject.my_role;
 
     document.getElementById("projectName").innerHTML =
-      `${currentProject.name} <span class="role-badge">${currentRole === "leader" ? "Project Leader" : "Developer"}</span>`;
+      `${escapeHtml(currentProject.name)} <span class="role-badge">${currentRole === "leader" ? "Project Leader" : "Developer"}</span>`;
 
-    projectMembers = (await api(`/projects/${currentProject.id}/members`)).map(m => m.profiles);
+    // Fetch members and columns concurrently
+    const [membersData, columnsData] = await Promise.all([
+      api(`/projects/${currentProject.id}/members`),
+      api(`/projects/${currentProject.id}/columns`),
+    ]);
+
+    projectMembers = (membersData || []).map(m => m.profiles);
     populateAssigneeOptions();
+
+    // Seed a starter task if board is totally empty
+    const tasks = await api(`/projects/${currentProject.id}/tasks`);
+    if (tasks.length === 0 && columnsData.length > 0) {
+      const targetColumn = columnsData.find(c => c.name === "To Do") || columnsData[0];
+      await api(`/projects/${currentProject.id}/tasks`, {
+        method: "POST",
+        body: {
+          column_id: targetColumn.id,
+          name: "Welcome to Corkboard!",
+          description: "Drag tasks between columns or click '+ Add a task' to create new ones.",
+          priority: "medium",
+          story_points: 1,
+        },
+      });
+    }
 
     await renderBoard();
   } catch (err) {
     boardEl.innerHTML = `
       <div class="board-empty">
         <h2>Couldn't load the board</h2>
-        <p>${err.message}</p>
+        <p>${escapeHtml(err.message)}</p>
       </div>`;
   }
 }
@@ -144,7 +167,7 @@ function renderTaskCard(task) {
     e.dataTransfer.setData("text/task-id", task.id);
   });
 
-  const initials = (name) => name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
+  const initials = (name) => name ? name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase() : "";
 
   card.innerHTML = `
     <span class="pin-dot ${task.priority}"></span>
@@ -155,7 +178,7 @@ function renderTaskCard(task) {
       <span class="story-points">${task.story_points}</span>
     </div>
     <div class="assignee-stack">
-      ${task.assignees.map(a => `<span class="avatar" title="${escapeHtml(a.full_name)}">${initials(a.full_name)}</span>`).join("")}
+      ${(task.assignees || []).map(a => `<span class="avatar" title="${escapeHtml(a.full_name)}">${initials(a.full_name)}</span>`).join("")}
     </div>
   `;
   return card;
@@ -211,8 +234,7 @@ taskForm.addEventListener("submit", async (e) => {
   }
 });
 
-// ---- Add column (Leader only — button is only rendered for leaders,
-// but the real enforcement happens server-side in require_role) ----
+// ---- Add column (Leader only) ----
 
 async function handleAddColumn() {
   const name = prompt("New column name:");

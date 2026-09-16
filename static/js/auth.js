@@ -61,8 +61,38 @@ form.addEventListener("submit", async (e) => {
       errorBox.style.background = "#EAF2F1";
       errorBox.style.display = "block";
     } else {
+      // 1. Log in
       const data = await api("/auth/login", { method: "POST", body: { email, password } });
       setSession(data.access_token, data.user);
+
+      // 2. Check for existing projects; if none exist, auto-create one
+      const projects = await api("/projects");
+      if (projects.length === 0) {
+        const newProject = await api("/projects", {
+          method: "POST",
+          body: { name: "My First Project" }
+        });
+        
+        // Fetch default columns created by backend (To Do, In Progress, Done)
+        const columns = await api(`/projects/${newProject.id}/columns`);
+        const toDoColumn = columns.find(c => c.name === "To Do") || columns[0];
+
+        // 3. Create initial sample tasks in the new project
+        if (toDoColumn) {
+          await api(`/projects/${newProject.id}/tasks`, {
+            method: "POST",
+            body: {
+              column_id: toDoColumn.id,
+              name: "Welcome to Corkboard!",
+              description: "This is your first task. Drag it across columns or create new ones.",
+              priority: "medium",
+              story_points: 1
+            }
+          });
+        }
+      }
+
+      // 4. Redirect to board page
       window.location.href = "board.html";
     }
   } catch (err) {
