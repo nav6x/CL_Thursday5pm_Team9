@@ -1,6 +1,7 @@
 import pytest
 from types import SimpleNamespace
 from flask import g
+from unittest.mock import MagicMock
 
 from app import app as flask_app
 import routes.tasks as tasks
@@ -191,3 +192,113 @@ def test_developer_cannot_assign_tasks(monkeypatch):
         assert status_code == 403
         assert response.get_json()["error"] == \
             "Only a Project Leader can assign tasks"
+
+def test_valid_developer_can_create_task(monkeypatch):
+    """A valid developer should be able to create a task."""
+
+    # Pretend the logged-in user is a developer
+    monkeypatch.setattr(
+        tasks,
+        "get_role_in_project",
+        lambda user_id, project_id: "developer"
+    )
+
+    # Fake task that Supabase would return after insertion
+    created_task = {
+        "id": "task-1",
+        "project_id": "project-1",
+        "column_id": "column-1",
+        "name": "Write unit tests",
+        "description": "Test the create task route",
+        "priority": "high",
+        "story_points": 3,
+        "created_by": "user-1"
+    }
+
+    # Mock Supabase so no real database is changed
+    mock_supabase = MagicMock()
+    mock_supabase.table.return_value.insert.return_value.execute.return_value.data = [
+        created_task
+    ]
+
+    monkeypatch.setattr(tasks, "supabase", mock_supabase)
+
+    with flask_app.test_request_context(
+        "/api/projects/project-1/tasks",
+        method="POST",
+        json={
+            "name": "Write unit tests",
+            "column_id": "column-1",
+            "description": "Test the create task route",
+            "priority": "high",
+            "story_points": 3
+        }
+    ):
+        g.user = SimpleNamespace(id="user-1")
+
+        response, status_code = tasks.create_task.__wrapped__(
+            "project-1"
+        )
+
+        assert status_code == 201
+
+        data = response.get_json()
+
+        assert data["name"] == "Write unit tests"
+        assert data["column_id"] == "column-1"
+        assert data["story_points"] == 3
+        assert data["created_by"] == "user-1"
+
+
+def test_valid_leader_can_create_task(monkeypatch):
+    """A valid project leader should be able to create a task."""
+
+    # Pretend the logged-in user is a leader
+    monkeypatch.setattr(
+        tasks,
+        "get_role_in_project",
+        lambda user_id, project_id: "leader"
+    )
+
+    created_task = {
+        "id": "task-2",
+        "project_id": "project-1",
+        "column_id": "column-1",
+        "name": "Create board layout",
+        "description": "",
+        "priority": "medium",
+        "story_points": 5,
+        "created_by": "leader-1"
+    }
+
+    # Mock Supabase
+    mock_supabase = MagicMock()
+    mock_supabase.table.return_value.insert.return_value.execute.return_value.data = [
+        created_task
+    ]
+
+    monkeypatch.setattr(tasks, "supabase", mock_supabase)
+
+    with flask_app.test_request_context(
+        "/api/projects/project-1/tasks",
+        method="POST",
+        json={
+            "name": "Create board layout",
+            "column_id": "column-1",
+            "story_points": 5
+        }
+    ):
+        g.user = SimpleNamespace(id="leader-1")
+
+        response, status_code = tasks.create_task.__wrapped__(
+            "project-1"
+        )
+
+        assert status_code == 201
+
+        data = response.get_json()
+
+        assert data["name"] == "Create board layout"
+        assert data["column_id"] == "column-1"
+        assert data["story_points"] == 5
+        assert data["created_by"] == "leader-1"
