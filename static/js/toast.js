@@ -1,5 +1,3 @@
-// Lightweight toast system so errors and confirmations feel like part of
-// the app's voice, not a browser alert() interrupting the person.
 function ensureToastStack() {
   let stack = document.querySelector(".toast-stack");
   if (!stack) {

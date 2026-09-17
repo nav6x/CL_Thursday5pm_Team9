@@ -3,14 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Log in — Corkboard</title>
+  <title>Scrumptious — Log In</title>
   <link rel="stylesheet" href="static/css/style.css">
 </head>
 <body>
   <div class="auth-screen">
     <div class="auth-card">
+      <div style="display:flex; align-items:center; gap:0.65rem; margin-bottom:1.25rem;">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24"><path d="M4 6h4v12H4V6zm6 4h4v8h-4v-8zm6 4h4v4h-4v-4z"/></svg>
+        </div>
+        <span class="brand-name">Scrumptious</span>
+      </div>
+
       <h1 id="formTitle">Welcome back</h1>
-      <p class="subtitle" id="formSubtitle">Log in to see what your team's working on.</p>
+      <p class="subtitle" id="formSubtitle">Log in to collaborate on your sprint backlog.</p>
 
       <div class="form-error" id="formError"></div>
 

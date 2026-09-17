@@ -121,3 +121,35 @@ def update_project(project_id):
 def delete_project(project_id):
     supabase.table("projects").delete().eq("id", project_id).execute()
     return jsonify({"message": "Project deleted"}), 200
+
+
+@projects_bp.route("/<project_id>/members/<user_id>", methods=["PATCH"])
+@login_required
+@require_role("leader")
+def update_member(project_id, user_id):
+    body = request.get_json(force=True)
+    role = body.get("role")
+    if role not in ("leader", "developer"):
+        return jsonify({"error": "role must be 'leader' or 'developer'"}), 400
+
+    result = (
+        supabase.table("project_members")
+        .update({"role": role})
+        .eq("project_id", project_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not result.data:
+        return jsonify({"error": "Member not found"}), 404
+    return jsonify(result.data[0]), 200
+
+
+@projects_bp.route("/<project_id>/members/<user_id>", methods=["DELETE"])
+@login_required
+@require_role("leader")
+def remove_member(project_id, user_id):
+    if user_id == g.user.id:
+        return jsonify({"error": "Cannot remove yourself as project leader"}), 400
+
+    supabase.table("project_members").delete().eq("project_id", project_id).eq("user_id", user_id).execute()
+    return jsonify({"message": "Member removed"}), 200

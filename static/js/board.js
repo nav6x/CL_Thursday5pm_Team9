@@ -1,17 +1,33 @@
-// ---- Guard: must be logged in ----
 if (!getToken()) window.location.href = "index.html";
 
 const user = getUser();
-document.getElementById("userName").textContent = user?.email || "";
-document.getElementById("logoutBtn").addEventListener("click", () => {
-  clearSession();
-  window.location.href = "index.html";
-});
+const userNameEl = document.getElementById("userName");
+if (userNameEl) userNameEl.textContent = user?.email || "";
+
+const logoutBtn = document.getElementById("logoutBtn");
+if (logoutBtn) {
+  logoutBtn.addEventListener("click", () => {
+    clearSession();
+    window.location.href = "index.html";
+  });
+}
+
+const savedTheme = localStorage.getItem("scrumptious_theme") || "slate";
+const savedAccent = localStorage.getItem("scrumptious_accent") || "indigo";
+document.documentElement.setAttribute("data-theme", savedTheme);
+document.documentElement.setAttribute("data-accent", savedAccent);
 
 let currentProject = null;
 let currentRole = null;
 let projectMembers = [];
 let activeColumnIdForNewTask = null;
+let editingTaskId = null;
+let cachedTasks = [];
+let cachedColumns = [];
+
+let activeFilterTag = "all";
+let activeFilterPriority = "all";
+let searchFilterText = "";
 
 const boardEl = document.getElementById("board");
 const modalOverlay = document.getElementById("taskModalOverlay");
@@ -19,17 +35,30 @@ const taskForm = document.getElementById("taskForm");
 const assigneesSelect = document.getElementById("taskAssignees");
 const projectSelect = document.getElementById("projectSelect");
 const newProjectBtn = document.getElementById("newProjectBtn");
-const editProjectBtn = document.getElementById("editProjectBtn");
 const topAddTaskBtn = document.getElementById("topAddTaskBtn");
+const deleteTaskBtn = document.getElementById("deleteTaskBtn");
+const cancelTaskBtn = document.getElementById("cancelTaskBtn");
+
 const projectModalOverlay = document.getElementById("projectModalOverlay");
 const projectForm = document.getElementById("projectForm");
 const cancelProjectBtn = document.getElementById("cancelProjectBtn");
-const editProjectModalOverlay = document.getElementById("editProjectModalOverlay");
-const editProjectForm = document.getElementById("editProjectForm");
-const cancelEditProjectBtn = document.getElementById("cancelEditProjectBtn");
+
+const settingsModalOverlay = document.getElementById("settingsModalOverlay");
+const settingsBtn = document.getElementById("settingsBtn");
+const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+const renameProjectForm = document.getElementById("renameProjectForm");
+const renameProjectInput = document.getElementById("renameProjectInput");
 const deleteProjectBtn = document.getElementById("deleteProjectBtn");
-const deleteTaskBtn = document.getElementById("deleteTaskBtn");
-let editingTaskId = null;
+const projectDangerZone = document.getElementById("projectDangerZone");
+const addMemberSection = document.getElementById("addMemberSection");
+const addMemberForm = document.getElementById("addMemberForm");
+const memberListContainer = document.getElementById("memberListContainer");
+
+const tagChipsContainer = document.getElementById("tagChipsContainer");
+const customTagInput = document.getElementById("customTagInput");
+const addCustomTagBtn = document.getElementById("addCustomTagBtn");
+
+const searchInput = document.getElementById("searchInput");
 
 init();
 
@@ -48,11 +77,11 @@ async function init(preferredProjectId = null) {
     let projects = await api("/projects");
 
     if (!projects || projects.length === 0) {
-      await api("/projects", {
+      const created = await api("/projects", {
         method: "POST",
-        body: { name: "My First Project" },
+        body: { name: "Sprint 1 Workspace" },
       });
-      projects = await api("/projects");
+      projects = [created];
     }
 
     currentProject = preferredProjectId
@@ -60,8 +89,9 @@ async function init(preferredProjectId = null) {
       : projects[0];
     currentRole = currentProject.my_role;
 
+    const roleBadgeText = currentRole === "leader" ? "Project Leader" : "Developer";
     document.getElementById("projectName").innerHTML =
-      `${escapeHtml(currentProject.name)} <span class="role-badge">${currentRole === "leader" ? "Project Leader" : "Developer"}</span>`;
+      `${escapeHtml(currentProject.name)} <span class="role-badge" id="roleBadge">${roleBadgeText}</span>`;
 
     if (projectSelect) {
       if (projects.length > 1) {
@@ -74,43 +104,63 @@ async function init(preferredProjectId = null) {
       }
     }
 
-    if (editProjectBtn) {
-      editProjectBtn.style.display = currentRole === "leader" ? "inline-block" : "none";
+    if (projectDangerZone) {
+      projectDangerZone.style.display = currentRole === "leader" ? "block" : "none";
+    }
+    if (addMemberSection) {
+      addMemberSection.style.display = currentRole === "leader" ? "block" : "none";
     }
 
-    // Fetch members and columns concurrently
     const [membersData, columnsData] = await Promise.all([
       api(`/projects/${currentProject.id}/members`),
       api(`/projects/${currentProject.id}/columns`),
     ]);
 
-    projectMembers = (membersData || []).map(m => m.profiles);
+    projectMembers = membersData || [];
     populateAssigneeOptions();
 
-    // Seed a starter task if board is totally empty
-    const tasks = await api(`/projects/${currentProject.id}/tasks`);
+    let tasks = await api(`/projects/${currentProject.id}/tasks`);
     if (tasks.length === 0 && columnsData.length > 0) {
       const targetColumn = columnsData.find(c => c.name === "To Do") || columnsData[0];
       await api(`/projects/${currentProject.id}/tasks`, {
         method: "POST",
         body: {
           column_id: targetColumn.id,
-          name: "Welcome to Corkboard!",
-          description: "Drag tasks between columns or click '+ Add a task' to create new ones.",
+          name: "Welcome to Scrumptious",
+          description: "[tags:Frontend,Feature] Manage sprints, organize tickets, and collaborate in real-time.",
           priority: "medium",
-          story_points: 1,
+          story_points: 3,
         },
       });
+      tasks = await api(`/projects/${currentProject.id}/tasks`);
     }
+
+    cachedColumns = columnsData;
+    cachedTasks = tasks;
 
     await renderBoard();
   } catch (err) {
     boardEl.innerHTML = `
       <div class="board-empty">
-        <h2>Couldn't load the board</h2>
+        <h2>Unable to load workspace</h2>
         <p>${escapeHtml(err.message)}</p>
       </div>`;
   }
+}
+
+function parseTaskDescription(rawDesc) {
+  if (!rawDesc) return { tags: [], desc: "" };
+  const match = rawDesc.match(/^\[tags:([^\]]*)\]\s*([\s\S]*)$/);
+  if (match) {
+    const tags = match[1].split(",").map(t => t.trim()).filter(Boolean);
+    return { tags, desc: match[2].trim() };
+  }
+  return { tags: [], desc: rawDesc.trim() };
+}
+
+function packTaskDescription(tags, cleanDesc) {
+  if (!tags || tags.length === 0) return cleanDesc;
+  return `[tags:${tags.join(",")}] ${cleanDesc}`;
 }
 
 async function renderBoard() {
@@ -119,6 +169,9 @@ async function renderBoard() {
     api(`/projects/${currentProject.id}/tasks`),
   ]);
 
+  cachedColumns = columns;
+  cachedTasks = tasks;
+
   boardEl.innerHTML = "";
 
   columns.forEach(column => {
@@ -126,15 +179,15 @@ async function renderBoard() {
     boardEl.appendChild(renderColumn(column, columnTasks));
   });
 
-  // Leaders can grow the board with new columns; Developers work
-  // within the structure the Leader has set up.
   if (currentRole === "leader") {
     const addColBtn = document.createElement("button");
     addColBtn.className = "add-column";
-    addColBtn.textContent = "+ Add column";
+    addColBtn.textContent = "+ Add Column";
     addColBtn.addEventListener("click", handleAddColumn);
     boardEl.appendChild(addColBtn);
   }
+
+  applyFilters();
 }
 
 function renderColumn(column, tasks) {
@@ -142,10 +195,15 @@ function renderColumn(column, tasks) {
   el.className = "column";
   el.dataset.columnId = column.id;
 
+  const totalPoints = tasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+
   el.innerHTML = `
     <div class="column-header">
-      <h2>${escapeHtml(column.name)}</h2>
-      <span class="column-count">${tasks.length}</span>
+      <div class="column-header-title">
+        <h2>${escapeHtml(column.name)}</h2>
+        <span class="column-count">${tasks.length}</span>
+      </div>
+      <span class="column-pts">${totalPoints} pts</span>
     </div>
     <div class="task-list"></div>
   `;
@@ -154,7 +212,7 @@ function renderColumn(column, tasks) {
   if (tasks.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-column";
-    empty.textContent = "Nothing pinned here yet.";
+    empty.textContent = "No tasks yet in this column";
     list.appendChild(empty);
   } else {
     tasks.forEach(task => list.appendChild(renderTaskCard(task)));
@@ -166,7 +224,6 @@ function renderColumn(column, tasks) {
   addTaskBtn.addEventListener("click", () => openTaskModal(column.id));
   el.appendChild(addTaskBtn);
 
-  // Drop target for dragging cards between columns
   el.addEventListener("dragover", (e) => e.preventDefault());
   el.addEventListener("drop", async (e) => {
     e.preventDefault();
@@ -186,13 +243,30 @@ function renderColumn(column, tasks) {
   return el;
 }
 
+function getTagClass(tag) {
+  const lower = tag.toLowerCase();
+  if (["frontend", "backend", "bug", "feature", "devops", "design"].includes(lower)) {
+    return lower;
+  }
+  return "general";
+}
+
 function renderTaskCard(task) {
   const card = document.createElement("div");
-  card.className = "task-card";
+  card.className = `task-card priority-${task.priority || "medium"}`;
+  card.dataset.taskId = task.id;
+  card.dataset.priority = task.priority || "medium";
   card.draggable = true;
+
+  const { tags, desc } = parseTaskDescription(task.description);
+  card.dataset.tags = tags.join(",").toLowerCase();
+  card.dataset.name = (task.name || "").toLowerCase();
+  card.dataset.desc = desc.toLowerCase();
+
   card.addEventListener("dragstart", (e) => {
     e.dataTransfer.setData("text/task-id", task.id);
   });
+
   card.addEventListener("click", (e) => {
     if (!e.target.closest(".avatar")) {
       openTaskModal(task.column_id, task);
@@ -201,13 +275,17 @@ function renderTaskCard(task) {
 
   const initials = (name) => name ? name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase() : "";
 
+  const tagChipsHtml = tags.length > 0
+    ? `<div class="task-tags">${tags.map(t => `<span class="tag-chip ${getTagClass(t)}">${escapeHtml(t)}</span>`).join("")}</div>`
+    : "";
+
   card.innerHTML = `
-    <span class="pin-dot ${task.priority}"></span>
     <h3>${escapeHtml(task.name)}</h3>
-    ${task.description ? `<p class="desc">${escapeHtml(task.description)}</p>` : ""}
+    ${tagChipsHtml}
+    ${desc ? `<p class="desc">${escapeHtml(desc)}</p>` : ""}
     <div class="task-meta">
-      <span class="priority-chip ${task.priority}">${task.priority}</span>
-      <span class="story-points">${task.story_points}</span>
+      <span class="priority-badge ${task.priority}">${escapeHtml(task.priority)}</span>
+      <span class="story-points">${task.story_points ?? 0} pts</span>
     </div>
     <div class="assignee-stack">
       ${(task.assignees || []).map(a => `<span class="avatar" title="${escapeHtml(a.full_name)}">${initials(a.full_name)}</span>`).join("")}
@@ -217,8 +295,9 @@ function renderTaskCard(task) {
 }
 
 function populateAssigneeOptions() {
+  if (!assigneesSelect) return;
   assigneesSelect.innerHTML = projectMembers
-    .map(m => `<option value="${m.id}">${escapeHtml(m.full_name)}</option>`)
+    .map(m => `<option value="${m.profiles.id}">${escapeHtml(m.profiles.full_name || m.profiles.email)}</option>`)
     .join("");
 }
 
@@ -226,12 +305,18 @@ function openTaskModal(columnId, task = null) {
   activeColumnIdForNewTask = columnId;
   editingTaskId = task ? task.id : null;
 
+  resetTagChips();
+
   if (task) {
-    document.getElementById("modalTitle").textContent = "Edit task";
+    document.getElementById("modalTitle").textContent = "Edit Task";
     document.getElementById("taskName").value = task.name || "";
-    document.getElementById("taskDescription").value = task.description || "";
+
+    const { tags, desc } = parseTaskDescription(task.description);
+    document.getElementById("taskDescription").value = desc || "";
     document.getElementById("taskPriority").value = task.priority || "medium";
     document.getElementById("taskPoints").value = task.story_points ?? 1;
+
+    tags.forEach(t => selectOrCreateTagChip(t));
 
     const assigneeIds = (task.assignees || []).map(a => a.id);
     Array.from(assigneesSelect.options).forEach(opt => {
@@ -239,11 +324,12 @@ function openTaskModal(columnId, task = null) {
     });
 
     if (deleteTaskBtn) {
-      deleteTaskBtn.style.display = currentRole === "leader" ? "inline-block" : "none";
+      deleteTaskBtn.style.display = currentRole === "leader" || task.created_by === user?.id ? "inline-block" : "none";
     }
   } else {
-    document.getElementById("modalTitle").textContent = "New task";
+    document.getElementById("modalTitle").textContent = "New Task";
     taskForm.reset();
+    document.getElementById("taskPoints").value = 1;
     if (deleteTaskBtn) {
       deleteTaskBtn.style.display = "none";
     }
@@ -252,9 +338,47 @@ function openTaskModal(columnId, task = null) {
   modalOverlay.classList.add("open");
 }
 
-document.getElementById("cancelTaskBtn").addEventListener("click", () => {
-  modalOverlay.classList.remove("open");
-});
+function resetTagChips() {
+  const chips = tagChipsContainer.querySelectorAll(".tag-option-btn");
+  chips.forEach(btn => btn.classList.remove("selected"));
+}
+
+function selectOrCreateTagChip(tag) {
+  const existing = Array.from(tagChipsContainer.querySelectorAll(".tag-option-btn"))
+    .find(b => b.dataset.tag.toLowerCase() === tag.toLowerCase());
+  if (existing) {
+    existing.classList.add("selected");
+  } else {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tag-option-btn selected";
+    btn.dataset.tag = tag;
+    btn.textContent = tag;
+    btn.addEventListener("click", () => btn.classList.toggle("selected"));
+    tagChipsContainer.appendChild(btn);
+  }
+}
+
+if (tagChipsContainer) {
+  tagChipsContainer.querySelectorAll(".tag-option-btn").forEach(btn => {
+    btn.addEventListener("click", () => btn.classList.toggle("selected"));
+  });
+}
+
+if (addCustomTagBtn && customTagInput) {
+  addCustomTagBtn.addEventListener("click", () => {
+    const customTag = customTagInput.value.trim();
+    if (!customTag) return;
+    selectOrCreateTagChip(customTag);
+    customTagInput.value = "";
+  });
+}
+
+if (cancelTaskBtn) {
+  cancelTaskBtn.addEventListener("click", () => {
+    modalOverlay.classList.remove("open");
+  });
+}
 
 if (deleteTaskBtn) {
   deleteTaskBtn.addEventListener("click", async () => {
@@ -282,9 +406,14 @@ taskForm.addEventListener("submit", async (e) => {
   saveBtn.disabled = true;
   saveBtn.textContent = "Saving…";
 
+  const selectedTags = Array.from(tagChipsContainer.querySelectorAll(".tag-option-btn.selected"))
+    .map(btn => btn.dataset.tag);
+  const cleanDescription = document.getElementById("taskDescription").value.trim();
+  const packedDescription = packTaskDescription(selectedTags, cleanDescription);
+
   const taskData = {
     name: document.getElementById("taskName").value.trim(),
-    description: document.getElementById("taskDescription").value.trim(),
+    description: packedDescription,
     priority: document.getElementById("taskPriority").value,
     story_points: parseInt(document.getElementById("taskPoints").value, 10) || 0,
   };
@@ -311,7 +440,7 @@ taskForm.addEventListener("submit", async (e) => {
           assignee_ids: selectedAssignees,
         },
       });
-      showToast("Task pinned to the board.", "success");
+      showToast("Task created.", "success");
     }
     modalOverlay.classList.remove("open");
     renderBoard();
@@ -323,25 +452,70 @@ taskForm.addEventListener("submit", async (e) => {
   }
 });
 
-// ---- Add column (Leader only) ----
-
 async function handleAddColumn() {
-  const name = prompt("New column name:");
+  const name = prompt("Column title:");
   if (!name) return;
   try {
-    await api(`/projects/${currentProject.id}/columns`, { method: "POST", body: { name } });
-    showToast(`"${name}" column added.`, "success");
+    await api(`/projects/${currentProject.id}/columns`, { method: "POST", body: { name: name.trim() } });
+    showToast(`Column "${name.trim()}" added.`, "success");
     renderBoard();
   } catch (err) {
     showToast(err.message, "error");
   }
 }
 
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str || "";
-  return div.innerHTML;
+function applyFilters() {
+  const cards = document.querySelectorAll(".task-card");
+  const query = searchFilterText.trim().toLowerCase();
+
+  cards.forEach(card => {
+    const cardName = card.dataset.name || "";
+    const cardDesc = card.dataset.desc || "";
+    const cardPriority = card.dataset.priority || "";
+    const cardTags = (card.dataset.tags || "").split(",").filter(Boolean);
+
+    const matchesSearch = !query || cardName.includes(query) || cardDesc.includes(query);
+    const matchesPriority = activeFilterPriority === "all" || cardPriority === activeFilterPriority;
+    const matchesTag = activeFilterTag === "all" || cardTags.includes(activeFilterTag.toLowerCase());
+
+    if (matchesSearch && matchesPriority && matchesTag) {
+      card.style.display = "";
+    } else {
+      card.style.display = "none";
+    }
+  });
+
+  document.querySelectorAll(".column").forEach(col => {
+    const visibleCards = col.querySelectorAll('.task-card:not([style*="display: none"])');
+    const countBadge = col.querySelector(".column-count");
+    if (countBadge) countBadge.textContent = visibleCards.length;
+  });
 }
+
+if (searchInput) {
+  searchInput.addEventListener("input", (e) => {
+    searchFilterText = e.target.value;
+    applyFilters();
+  });
+}
+
+document.querySelectorAll("[data-filter-tag]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter-tag]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeFilterTag = btn.dataset.filterTag;
+    applyFilters();
+  });
+});
+
+document.querySelectorAll("[data-filter-priority]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter-priority]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeFilterPriority = btn.dataset.filterPriority;
+    applyFilters();
+  });
+});
 
 if (newProjectBtn) {
   newProjectBtn.addEventListener("click", () => {
@@ -389,7 +563,7 @@ if (topAddTaskBtn) {
       if (columns && columns.length > 0) {
         openTaskModal(columns[0].id);
       } else {
-        showToast("No columns available to add tasks.", "error");
+        showToast("Create a column first before adding tasks.", "error");
       }
     } catch (err) {
       showToast(err.message, "error");
@@ -397,34 +571,47 @@ if (topAddTaskBtn) {
   });
 }
 
-if (editProjectBtn) {
-  editProjectBtn.addEventListener("click", () => {
-    const editInput = document.getElementById("editProjectName");
-    if (editInput) editInput.value = currentProject ? currentProject.name : "";
-    if (editProjectModalOverlay) editProjectModalOverlay.classList.add("open");
+if (settingsBtn) {
+  settingsBtn.addEventListener("click", async () => {
+    if (renameProjectInput) renameProjectInput.value = currentProject?.name || "";
+    await refreshMemberList();
+    updateActiveThemeSwatches();
+    if (settingsModalOverlay) settingsModalOverlay.classList.add("open");
   });
 }
 
-if (cancelEditProjectBtn) {
-  cancelEditProjectBtn.addEventListener("click", () => {
-    if (editProjectModalOverlay) editProjectModalOverlay.classList.remove("open");
+if (closeSettingsBtn) {
+  closeSettingsBtn.addEventListener("click", () => {
+    if (settingsModalOverlay) settingsModalOverlay.classList.remove("open");
   });
 }
 
-if (editProjectForm) {
-  editProjectForm.addEventListener("submit", async (e) => {
+document.querySelectorAll(".settings-tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".settings-tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".settings-panel").forEach(p => p.classList.remove("active"));
+
+    btn.classList.add("active");
+    const tabName = btn.dataset.tab;
+    const targetPanel = document.getElementById(`tab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
+    if (targetPanel) targetPanel.classList.add("active");
+  });
+});
+
+if (renameProjectForm) {
+  renameProjectForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const editInput = document.getElementById("editProjectName");
-    const name = editInput ? editInput.value.trim() : "";
-    if (!name) return;
+    const newName = renameProjectInput.value.trim();
+    if (!newName) return;
     try {
       await api(`/projects/${currentProject.id}`, {
         method: "PATCH",
-        body: { name },
+        body: { name: newName },
       });
-      if (editProjectModalOverlay) editProjectModalOverlay.classList.remove("open");
-      showToast(`Project renamed to "${name}".`, "success");
-      await init(currentProject.id);
+      currentProject.name = newName;
+      document.getElementById("projectName").innerHTML =
+        `${escapeHtml(newName)} <span class="role-badge">${currentRole === "leader" ? "Project Leader" : "Developer"}</span>`;
+      showToast("Project renamed.", "success");
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -434,16 +621,154 @@ if (editProjectForm) {
 if (deleteProjectBtn) {
   deleteProjectBtn.addEventListener("click", async () => {
     if (!currentProject) return;
-    if (!confirm(`Are you sure you want to delete project "${currentProject.name}"? This will remove all columns and tasks.`)) return;
+    if (!confirm(`Delete "${currentProject.name}"? This action cannot be undone.`)) return;
     try {
-      await api(`/projects/${currentProject.id}`, {
-        method: "DELETE",
-      });
-      if (editProjectModalOverlay) editProjectModalOverlay.classList.remove("open");
+      await api(`/projects/${currentProject.id}`, { method: "DELETE" });
+      if (settingsModalOverlay) settingsModalOverlay.classList.remove("open");
       showToast("Project deleted.", "success");
       await init();
     } catch (err) {
       showToast(err.message, "error");
     }
   });
+}
+
+async function refreshMemberList() {
+  if (!memberListContainer) return;
+  try {
+    const members = await api(`/projects/${currentProject.id}/members`);
+    projectMembers = members || [];
+    populateAssigneeOptions();
+
+    if (members.length === 0) {
+      memberListContainer.innerHTML = `<div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">No members found.</div>`;
+      return;
+    }
+
+    memberListContainer.innerHTML = members.map(m => {
+      const p = m.profiles;
+      const isLeader = m.role === "leader";
+      const isMe = p.id === user?.id;
+
+      let actionsHtml = "";
+      if (currentRole === "leader") {
+        actionsHtml = `
+          <div class="member-actions">
+            <select class="member-role-select" data-user-id="${p.id}">
+              <option value="developer" ${!isLeader ? "selected" : ""}>Developer</option>
+              <option value="leader" ${isLeader ? "selected" : ""}>Leader</option>
+            </select>
+            ${!isMe ? `<button type="button" class="btn-ghost" data-remove-user-id="${p.id}" style="color:#DC2626; padding:0.2rem 0.5rem;">Remove</button>` : ""}
+          </div>
+        `;
+      } else {
+        actionsHtml = `<span class="role-badge">${isLeader ? "Leader" : "Developer"}</span>`;
+      }
+
+      return `
+        <div class="member-row">
+          <div class="member-info">
+            <span class="member-name">${escapeHtml(p.full_name || p.email)} ${isMe ? "(You)" : ""}</span>
+            <span class="member-email">${escapeHtml(p.email)}</span>
+          </div>
+          ${actionsHtml}
+        </div>
+      `;
+    }).join("");
+
+    memberListContainer.querySelectorAll(".member-role-select").forEach(select => {
+      select.addEventListener("change", async (e) => {
+        const uid = e.target.dataset.userId;
+        const newRole = e.target.value;
+        try {
+          await api(`/projects/${currentProject.id}/members/${uid}`, {
+            method: "PATCH",
+            body: { role: newRole },
+          });
+          showToast("Member role updated.", "success");
+          await refreshMemberList();
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      });
+    });
+
+    memberListContainer.querySelectorAll("[data-remove-user-id]").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        const uid = e.target.dataset.removeUserId;
+        if (!confirm("Remove this member from the project?")) return;
+        try {
+          await api(`/projects/${currentProject.id}/members/${uid}`, {
+            method: "DELETE",
+          });
+          showToast("Member removed.", "success");
+          await refreshMemberList();
+        } catch (err) {
+          showToast(err.message, "error");
+        }
+      });
+    });
+  } catch (err) {
+    memberListContainer.innerHTML = `<div style="font-size:0.85rem; color:#DC2626; padding:0.5rem 0;">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+if (addMemberForm) {
+  addMemberForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const emailInput = document.getElementById("newMemberEmail");
+    const roleInput = document.getElementById("newMemberRole");
+    const email = emailInput ? emailInput.value.trim() : "";
+    const role = roleInput ? roleInput.value : "developer";
+    if (!email) return;
+
+    try {
+      await api(`/projects/${currentProject.id}/members`, {
+        method: "POST",
+        body: { email, role },
+      });
+      emailInput.value = "";
+      showToast(`Added ${email} to project.`, "success");
+      await refreshMemberList();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+function updateActiveThemeSwatches() {
+  const curTheme = document.documentElement.getAttribute("data-theme") || "slate";
+  const curAccent = document.documentElement.getAttribute("data-accent") || "indigo";
+
+  document.querySelectorAll("[data-set-theme]").forEach(c => {
+    c.classList.toggle("active", c.dataset.setTheme === curTheme);
+  });
+
+  document.querySelectorAll("[data-set-accent]").forEach(s => {
+    s.classList.toggle("active", s.dataset.setAccent === curAccent);
+  });
+}
+
+document.querySelectorAll("[data-set-theme]").forEach(card => {
+  card.addEventListener("click", () => {
+    const themeName = card.dataset.setTheme;
+    document.documentElement.setAttribute("data-theme", themeName);
+    localStorage.setItem("scrumptious_theme", themeName);
+    updateActiveThemeSwatches();
+  });
+});
+
+document.querySelectorAll("[data-set-accent]").forEach(swatch => {
+  swatch.addEventListener("click", () => {
+    const accentName = swatch.dataset.setAccent;
+    document.documentElement.setAttribute("data-accent", accentName);
+    localStorage.setItem("scrumptious_accent", accentName);
+    updateActiveThemeSwatches();
+  });
+});
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
 }
