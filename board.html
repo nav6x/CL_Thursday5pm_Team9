@@ -12,6 +12,7 @@
       <h1 id="projectName">Loading…<span class="role-badge" id="roleBadge"></span></h1>
       <select id="projectSelect" class="project-select" style="display:none;"></select>
       <button class="btn-secondary" id="newProjectBtn">+ New Project</button>
+      <button class="btn-secondary" id="editProjectBtn" style="display:none;">Edit Project</button>
       <button class="btn-primary" id="topAddTaskBtn" style="width:auto; padding:0.45rem 0.9rem; font-size:0.85rem;">+ New Task</button>
     </div>
     <div class="topbar-user">
@@ -55,6 +56,7 @@
           <select id="taskAssignees" multiple size="4"></select>
         </div>
         <div class="modal-actions">
+          <button type="button" class="btn-danger" id="deleteTaskBtn" style="display:none; margin-right:auto;">Delete task</button>
           <button type="button" class="btn-ghost" id="cancelTaskBtn">Cancel</button>
           <button type="submit" class="btn-primary" style="width:auto; padding-left:1.2rem; padding-right:1.2rem;">Save task</button>
         </div>
@@ -73,6 +75,23 @@
         <div class="modal-actions">
           <button type="button" class="btn-ghost" id="cancelProjectBtn">Cancel</button>
           <button type="submit" class="btn-primary" style="width:auto; padding-left:1.2rem; padding-right:1.2rem;">Create project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="editProjectModalOverlay">
+    <div class="modal">
+      <h2>Project Settings</h2>
+      <form id="editProjectForm">
+        <div class="field">
+          <label for="editProjectName">Project Name</label>
+          <input type="text" id="editProjectName" required>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-danger" id="deleteProjectBtn" style="margin-right:auto;">Delete project</button>
+          <button type="button" class="btn-ghost" id="cancelEditProjectBtn">Cancel</button>
+          <button type="submit" class="btn-primary" style="width:auto; padding-left:1.2rem; padding-right:1.2rem;">Save changes</button>
         </div>
       </form>
     </div>

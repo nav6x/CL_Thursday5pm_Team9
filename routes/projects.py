@@ -98,3 +98,26 @@ def add_member(project_id):
     }).execute()
 
     return jsonify({"message": "Member added"}), 201
+
+
+@projects_bp.route("/<project_id>", methods=["PATCH"])
+@login_required
+@require_role("leader")
+def update_project(project_id):
+    body = request.get_json(force=True)
+    name = body.get("name", "").strip()
+    if not name:
+        return jsonify({"error": "Project name is required"}), 400
+
+    result = supabase.table("projects").update({"name": name}).eq("id", project_id).execute()
+    if not result.data:
+        return jsonify({"error": "Project not found"}), 404
+    return jsonify(result.data[0]), 200
+
+
+@projects_bp.route("/<project_id>", methods=["DELETE"])
+@login_required
+@require_role("leader")
+def delete_project(project_id):
+    supabase.table("projects").delete().eq("id", project_id).execute()
+    return jsonify({"message": "Project deleted"}), 200

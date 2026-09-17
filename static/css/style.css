@@ -470,3 +470,17 @@ button:disabled {
 .btn-secondary:hover {
   background: var(--border);
 }
+
+.btn-danger {
+  background: var(--high);
+  color: #fff;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: opacity 0.15s ease;
+}
+
+.btn-danger:hover {
+  opacity: 0.85;
+}

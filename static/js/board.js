@@ -19,10 +19,17 @@ const taskForm = document.getElementById("taskForm");
 const assigneesSelect = document.getElementById("taskAssignees");
 const projectSelect = document.getElementById("projectSelect");
 const newProjectBtn = document.getElementById("newProjectBtn");
+const editProjectBtn = document.getElementById("editProjectBtn");
 const topAddTaskBtn = document.getElementById("topAddTaskBtn");
 const projectModalOverlay = document.getElementById("projectModalOverlay");
 const projectForm = document.getElementById("projectForm");
 const cancelProjectBtn = document.getElementById("cancelProjectBtn");
+const editProjectModalOverlay = document.getElementById("editProjectModalOverlay");
+const editProjectForm = document.getElementById("editProjectForm");
+const cancelEditProjectBtn = document.getElementById("cancelEditProjectBtn");
+const deleteProjectBtn = document.getElementById("deleteProjectBtn");
+const deleteTaskBtn = document.getElementById("deleteTaskBtn");
+let editingTaskId = null;
 
 init();
 
@@ -65,6 +72,10 @@ async function init(preferredProjectId = null) {
       } else {
         projectSelect.style.display = "none";
       }
+    }
+
+    if (editProjectBtn) {
+      editProjectBtn.style.display = currentRole === "leader" ? "inline-block" : "none";
     }
 
     // Fetch members and columns concurrently
@@ -182,6 +193,11 @@ function renderTaskCard(task) {
   card.addEventListener("dragstart", (e) => {
     e.dataTransfer.setData("text/task-id", task.id);
   });
+  card.addEventListener("click", (e) => {
+    if (!e.target.closest(".avatar")) {
+      openTaskModal(task.column_id, task);
+    }
+  });
 
   const initials = (name) => name ? name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase() : "";
 
@@ -200,23 +216,62 @@ function renderTaskCard(task) {
   return card;
 }
 
-// ---- Task creation modal ----
-
 function populateAssigneeOptions() {
   assigneesSelect.innerHTML = projectMembers
     .map(m => `<option value="${m.id}">${escapeHtml(m.full_name)}</option>`)
     .join("");
 }
 
-function openTaskModal(columnId) {
+function openTaskModal(columnId, task = null) {
   activeColumnIdForNewTask = columnId;
-  taskForm.reset();
+  editingTaskId = task ? task.id : null;
+
+  if (task) {
+    document.getElementById("modalTitle").textContent = "Edit task";
+    document.getElementById("taskName").value = task.name || "";
+    document.getElementById("taskDescription").value = task.description || "";
+    document.getElementById("taskPriority").value = task.priority || "medium";
+    document.getElementById("taskPoints").value = task.story_points ?? 1;
+
+    const assigneeIds = (task.assignees || []).map(a => a.id);
+    Array.from(assigneesSelect.options).forEach(opt => {
+      opt.selected = assigneeIds.includes(opt.value);
+    });
+
+    if (deleteTaskBtn) {
+      deleteTaskBtn.style.display = currentRole === "leader" ? "inline-block" : "none";
+    }
+  } else {
+    document.getElementById("modalTitle").textContent = "New task";
+    taskForm.reset();
+    if (deleteTaskBtn) {
+      deleteTaskBtn.style.display = "none";
+    }
+  }
+
   modalOverlay.classList.add("open");
 }
 
 document.getElementById("cancelTaskBtn").addEventListener("click", () => {
   modalOverlay.classList.remove("open");
 });
+
+if (deleteTaskBtn) {
+  deleteTaskBtn.addEventListener("click", async () => {
+    if (!editingTaskId) return;
+    if (!confirm("Are you sure you want to delete this task?")) return;
+    try {
+      await api(`/projects/${currentProject.id}/tasks/${editingTaskId}`, {
+        method: "DELETE",
+      });
+      modalOverlay.classList.remove("open");
+      showToast("Task deleted.", "success");
+      renderBoard();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
 
 taskForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -227,20 +282,38 @@ taskForm.addEventListener("submit", async (e) => {
   saveBtn.disabled = true;
   saveBtn.textContent = "Saving…";
 
+  const taskData = {
+    name: document.getElementById("taskName").value.trim(),
+    description: document.getElementById("taskDescription").value.trim(),
+    priority: document.getElementById("taskPriority").value,
+    story_points: parseInt(document.getElementById("taskPoints").value, 10) || 0,
+  };
+
   try {
-    await api(`/projects/${currentProject.id}/tasks`, {
-      method: "POST",
-      body: {
-        column_id: activeColumnIdForNewTask,
-        name: document.getElementById("taskName").value.trim(),
-        description: document.getElementById("taskDescription").value.trim(),
-        priority: document.getElementById("taskPriority").value,
-        story_points: parseInt(document.getElementById("taskPoints").value, 10) || 0,
-        assignee_ids: selectedAssignees,
-      },
-    });
+    if (editingTaskId) {
+      await api(`/projects/${currentProject.id}/tasks/${editingTaskId}`, {
+        method: "PATCH",
+        body: taskData,
+      });
+      if (currentRole === "leader") {
+        await api(`/projects/${currentProject.id}/tasks/${editingTaskId}/assignees`, {
+          method: "PUT",
+          body: { assignee_ids: selectedAssignees },
+        });
+      }
+      showToast("Task updated.", "success");
+    } else {
+      await api(`/projects/${currentProject.id}/tasks`, {
+        method: "POST",
+        body: {
+          ...taskData,
+          column_id: activeColumnIdForNewTask,
+          assignee_ids: selectedAssignees,
+        },
+      });
+      showToast("Task pinned to the board.", "success");
+    }
     modalOverlay.classList.remove("open");
-    showToast("Task pinned to the board.", "success");
     renderBoard();
   } catch (err) {
     showToast(err.message, "error");
@@ -318,6 +391,57 @@ if (topAddTaskBtn) {
       } else {
         showToast("No columns available to add tasks.", "error");
       }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+if (editProjectBtn) {
+  editProjectBtn.addEventListener("click", () => {
+    const editInput = document.getElementById("editProjectName");
+    if (editInput) editInput.value = currentProject ? currentProject.name : "";
+    if (editProjectModalOverlay) editProjectModalOverlay.classList.add("open");
+  });
+}
+
+if (cancelEditProjectBtn) {
+  cancelEditProjectBtn.addEventListener("click", () => {
+    if (editProjectModalOverlay) editProjectModalOverlay.classList.remove("open");
+  });
+}
+
+if (editProjectForm) {
+  editProjectForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const editInput = document.getElementById("editProjectName");
+    const name = editInput ? editInput.value.trim() : "";
+    if (!name) return;
+    try {
+      await api(`/projects/${currentProject.id}`, {
+        method: "PATCH",
+        body: { name },
+      });
+      if (editProjectModalOverlay) editProjectModalOverlay.classList.remove("open");
+      showToast(`Project renamed to "${name}".`, "success");
+      await init(currentProject.id);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+if (deleteProjectBtn) {
+  deleteProjectBtn.addEventListener("click", async () => {
+    if (!currentProject) return;
+    if (!confirm(`Are you sure you want to delete project "${currentProject.name}"? This will remove all columns and tasks.`)) return;
+    try {
+      await api(`/projects/${currentProject.id}`, {
+        method: "DELETE",
+      });
+      if (editProjectModalOverlay) editProjectModalOverlay.classList.remove("open");
+      showToast("Project deleted.", "success");
+      await init();
     } catch (err) {
       showToast(err.message, "error");
     }
