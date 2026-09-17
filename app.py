@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 
 from routes.auth import auth_bp
@@ -16,6 +16,16 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(projects_bp)
 app.register_blueprint(columns_bp)
 app.register_blueprint(tasks_bp)
+
+
+@app.route("/")
+def serve_index():
+    return send_from_directory(".", "index.html")
+
+
+@app.route("/board.html")
+def serve_board():
+    return send_from_directory(".", "board.html")
 
 
 @app.route("/api/health", methods=["GET"])
