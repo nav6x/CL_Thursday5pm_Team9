@@ -19,6 +19,7 @@ document.documentElement.setAttribute("data-accent", savedAccent);
 
 let currentProject = null;
 let currentRole = null;
+let currentAgileRole = "Developer";
 let projectMembers = [];
 let activeColumnIdForNewTask = null;
 let editingTaskId = null;
@@ -64,6 +65,15 @@ const searchInput = document.getElementById("searchInput");
 
 init();
 
+function getRoleBadgeClass(roleTitle) {
+  const lower = (roleTitle || "").toLowerCase().replace(/[\s_]+/g, "-");
+  if (lower.includes("scrum")) return "scrum-master";
+  if (lower.includes("leader")) return "project-leader";
+  if (lower.includes("product") || lower.includes("owner")) return "product-owner";
+  if (lower.includes("qa") || lower.includes("test")) return "qa-engineer";
+  return "developer";
+}
+
 function showLoadingSkeleton() {
   boardEl.innerHTML = `
     <div class="board-loading">
@@ -90,10 +100,11 @@ async function init(preferredProjectId = null) {
       ? projects.find(p => p.id === preferredProjectId) || projects[0]
       : projects[0];
     currentRole = currentProject.my_role;
+    currentAgileRole = currentProject.my_agile_role || (currentRole === "leader" ? "Project Leader" : "Developer");
 
-    const roleBadgeText = currentRole === "leader" ? "Project Leader" : "Developer";
+    const badgeClass = getRoleBadgeClass(currentAgileRole);
     document.getElementById("projectName").innerHTML =
-      `${escapeHtml(currentProject.name)} <span class="role-badge" id="roleBadge">${roleBadgeText}</span>`;
+      `${escapeHtml(currentProject.name)} <span class="role-badge ${badgeClass}" id="roleBadge">${escapeHtml(currentAgileRole)}</span>`;
 
     if (projectSelect) {
       if (projects.length > 1) {
@@ -106,14 +117,17 @@ async function init(preferredProjectId = null) {
       }
     }
 
+    const isLeaderLevel = currentRole === "leader";
+    const isProjectOwner = currentRole === "leader" && (currentAgileRole === "Project Leader" || currentProject.created_by === user?.id);
+
     if (projectDangerZone) {
-      projectDangerZone.style.display = currentRole === "leader" ? "block" : "none";
+      projectDangerZone.style.display = isProjectOwner ? "block" : "none";
     }
     if (addMemberSection) {
-      addMemberSection.style.display = currentRole === "leader" ? "block" : "none";
+      addMemberSection.style.display = isLeaderLevel ? "block" : "none";
     }
     if (addAllMembersBtn) {
-      addAllMembersBtn.style.display = currentRole === "leader" ? "inline-block" : "none";
+      addAllMembersBtn.style.display = isLeaderLevel ? "inline-block" : "none";
     }
 
     const [membersData, columnsData] = await Promise.all([
@@ -310,7 +324,8 @@ function populateAssigneeOptions() {
     .filter(m => m && m.profiles)
     .map(m => {
       const p = m.profiles;
-      const label = p.full_name ? `${p.full_name} (${p.email})` : p.email;
+      const roleName = m.agile_role || (m.role === "leader" ? "Project Leader" : "Developer");
+      const label = `${p.full_name || p.email} (${roleName})`;
       return `<option value="${p.id}">${escapeHtml(label)}</option>`;
     })
     .join("");
@@ -627,8 +642,9 @@ if (renameProjectForm) {
         body: { name: newName },
       });
       currentProject.name = newName;
+      const badgeClass = getRoleBadgeClass(currentAgileRole);
       document.getElementById("projectName").innerHTML =
-        `${escapeHtml(newName)} <span class="role-badge">${currentRole === "leader" ? "Project Leader" : "Developer"}</span>`;
+        `${escapeHtml(newName)} <span class="role-badge ${badgeClass}">${escapeHtml(currentAgileRole)}</span>`;
       showToast("Project renamed.", "success");
     } catch (err) {
       showToast(err.message, "error");
@@ -662,34 +678,43 @@ async function refreshMemberList() {
     projectMembers = members || [];
     populateAssigneeOptions();
 
+    const isLeaderLevel = currentRole === "leader";
+
     if (members.length === 0) {
       memberListContainer.innerHTML = `<div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">No members found.</div>`;
     } else {
       memberListContainer.innerHTML = members.map(m => {
         const p = m.profiles;
         if (!p) return "";
-        const isLeader = m.role === "leader";
+        const roleName = m.agile_role || (m.role === "leader" ? "Project Leader" : "Developer");
+        const badgeClass = getRoleBadgeClass(roleName);
         const isMe = p.id === user?.id;
 
         let actionsHtml = "";
-        if (currentRole === "leader") {
+        if (isLeaderLevel) {
           actionsHtml = `
             <div class="member-actions">
               <select class="member-role-select" data-user-id="${p.id}">
-                <option value="developer" ${!isLeader ? "selected" : ""}>Developer</option>
-                <option value="leader" ${isLeader ? "selected" : ""}>Leader</option>
+                <option value="project_leader" ${roleName === "Project Leader" ? "selected" : ""}>Project Leader</option>
+                <option value="scrum_master" ${roleName === "Scrum Master" ? "selected" : ""}>Scrum Master</option>
+                <option value="product_owner" ${roleName === "Product Owner" ? "selected" : ""}>Product Owner</option>
+                <option value="developer" ${roleName === "Developer" ? "selected" : ""}>Developer</option>
+                <option value="qa_engineer" ${roleName === "QA Engineer" ? "selected" : ""}>QA Engineer</option>
               </select>
               ${!isMe ? `<button type="button" class="btn-ghost" data-remove-user-id="${p.id}" style="color:#DC2626; padding:0.2rem 0.5rem;">Remove</button>` : ""}
             </div>
           `;
         } else {
-          actionsHtml = `<span class="role-badge">${isLeader ? "Leader" : "Developer"}</span>`;
+          actionsHtml = `<span class="role-badge ${badgeClass}">${escapeHtml(roleName)}</span>`;
         }
 
         return `
           <div class="member-row">
             <div class="member-info">
-              <span class="member-name">${escapeHtml(p.full_name || p.email)} ${isMe ? "(You)" : ""}</span>
+              <div style="display:flex; align-items:center; gap:0.4rem;">
+                <span class="member-name">${escapeHtml(p.full_name || p.email)} ${isMe ? "(You)" : ""}</span>
+                <span class="role-badge ${badgeClass}">${escapeHtml(roleName)}</span>
+              </div>
               <span class="member-email">${escapeHtml(p.email)}</span>
             </div>
             ${actionsHtml}
@@ -708,6 +733,7 @@ async function refreshMemberList() {
             });
             showToast("Member role updated.", "success");
             await refreshMemberList();
+            await init(currentProject.id);
           } catch (err) {
             showToast(err.message, "error");
           }
@@ -724,6 +750,7 @@ async function refreshMemberList() {
             });
             showToast("Member removed.", "success");
             await refreshMemberList();
+            await init(currentProject.id);
           } catch (err) {
             showToast(err.message, "error");
           }
@@ -732,23 +759,30 @@ async function refreshMemberList() {
     }
 
     if (workspaceUsersContainer) {
-      const memberUids = new Set(projectMembers.filter(m => m.profiles).map(m => m.profiles.id));
+      const memberMap = new Map();
+      projectMembers.filter(m => m.profiles).forEach(m => {
+        memberMap.set(m.profiles.id, m.agile_role || (m.role === "leader" ? "Project Leader" : "Developer"));
+      });
+
       if (!allUsers || allUsers.length === 0) {
         workspaceUsersContainer.innerHTML = `<div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">No other registered users.</div>`;
       } else {
         workspaceUsersContainer.innerHTML = allUsers.map(u => {
-          const inProject = memberUids.has(u.id);
+          const inProject = memberMap.has(u.id);
+          const currentRoleName = memberMap.get(u.id);
           const isMe = u.id === user?.id;
+          const cleanName = (u.full_name || "").split("[")[0].trim() || u.email;
+
           return `
             <div class="member-row">
               <div class="member-info">
-                <span class="member-name">${escapeHtml(u.full_name || u.email)} ${isMe ? "(You)" : ""}</span>
+                <span class="member-name">${escapeHtml(cleanName)} ${isMe ? "(You)" : ""}</span>
                 <span class="member-email">${escapeHtml(u.email)}</span>
               </div>
               <div>
                 ${inProject
-                  ? `<span class="role-badge" style="background:var(--surface);">On Team</span>`
-                  : currentRole === "leader"
+                  ? `<span class="role-badge ${getRoleBadgeClass(currentRoleName)}">${escapeHtml(currentRoleName)}</span>`
+                  : isLeaderLevel
                     ? `<button type="button" class="btn-secondary" data-add-workspace-user-id="${u.id}" style="font-size:0.75rem; padding:0.25rem 0.6rem;">+ Add to Project</button>`
                     : ""
                 }
@@ -767,6 +801,7 @@ async function refreshMemberList() {
               });
               showToast("Member added to project.", "success");
               await refreshMemberList();
+              await init(currentProject.id);
             } catch (err) {
               showToast(err.message, "error");
             }
@@ -785,6 +820,7 @@ if (addAllMembersBtn) {
       await api(`/projects/${currentProject.id}/members/all`, { method: "POST" });
       showToast("All workspace users added to project.", "success");
       await refreshMemberList();
+      await init(currentProject.id);
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -808,6 +844,7 @@ if (addMemberForm) {
       emailInput.value = "";
       showToast(`Added ${email} to project.`, "success");
       await refreshMemberList();
+      await init(currentProject.id);
     } catch (err) {
       showToast(err.message, "error");
     }

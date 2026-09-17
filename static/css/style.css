@@ -325,6 +325,38 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   color: var(--ink-muted);
   border: 1px solid var(--border);
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+}
+
+.role-badge.scrum-master {
+  background: #E0F2FE;
+  color: #0369A1;
+  border-color: #BAE6FD;
+}
+
+.role-badge.project-leader {
+  background: #EEF2FF;
+  color: #4338CA;
+  border-color: #C7D2FE;
+}
+
+.role-badge.product-owner {
+  background: #FEF3C7;
+  color: #92400E;
+  border-color: #FDE68A;
+}
+
+.role-badge.developer {
+  background: #DCFCE7;
+  color: #166534;
+  border-color: #BBF7D0;
+}
+
+.role-badge.qa-engineer {
+  background: #FFE4E6;
+  color: #9F1239;
+  border-color: #FECDD3;
 }
 
 .topbar-actions {
