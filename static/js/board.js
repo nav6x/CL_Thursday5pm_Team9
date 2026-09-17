@@ -61,6 +61,19 @@ const tagChipsContainer = document.getElementById("tagChipsContainer");
 const customTagInput = document.getElementById("customTagInput");
 const addCustomTagBtn = document.getElementById("addCustomTagBtn");
 
+const taskDueDate = document.getElementById("taskDueDate");
+const modalChecklistContainer = document.getElementById("modalChecklistContainer");
+const newSubtaskInput = document.getElementById("newSubtaskInput");
+const addSubtaskBtn = document.getElementById("addSubtaskBtn");
+
+const metricTasksCount = document.getElementById("metricTasksCount");
+const metricPointsCount = document.getElementById("metricPointsCount");
+const metricUrgentCount = document.getElementById("metricUrgentCount");
+const metricProgressPercent = document.getElementById("metricProgressPercent");
+const metricProgressFill = document.getElementById("metricProgressFill");
+
+let modalChecklist = [];
+
 const searchInput = document.getElementById("searchInput");
 
 init();
@@ -168,18 +181,55 @@ async function init(preferredProjectId = null) {
 }
 
 function parseTaskDescription(rawDesc) {
-  if (!rawDesc) return { tags: [], desc: "" };
-  const match = rawDesc.match(/^\[tags:([^\]]*)\]\s*([\s\S]*)$/);
-  if (match) {
-    const tags = match[1].split(",").map(t => t.trim()).filter(Boolean);
-    return { tags, desc: match[2].trim() };
+  if (!rawDesc) return { tags: [], due: "", checklist: [], desc: "" };
+  const metaMatch = rawDesc.match(/^\[meta:(\{[\s\S]*?\})\]---([\s\S]*)$/);
+  if (metaMatch) {
+    try {
+      const meta = JSON.parse(metaMatch[1]);
+      return {
+        tags: Array.isArray(meta.tags) ? meta.tags : [],
+        due: meta.due || "",
+        checklist: Array.isArray(meta.checklist) ? meta.checklist : [],
+        desc: (metaMatch[2] || "").trim()
+      };
+    } catch (e) {}
   }
-  return { tags: [], desc: rawDesc.trim() };
+  const tagMatch = rawDesc.match(/^\[tags:([^\]]*)\]\s*([\s\S]*)$/);
+  if (tagMatch) {
+    const tags = tagMatch[1].split(",").map(t => t.trim()).filter(Boolean);
+    return { tags, due: "", checklist: [], desc: tagMatch[2].trim() };
+  }
+  return { tags: [], due: "", checklist: [], desc: rawDesc.trim() };
 }
 
-function packTaskDescription(tags, cleanDesc) {
-  if (!tags || tags.length === 0) return cleanDesc;
-  return `[tags:${tags.join(",")}] ${cleanDesc}`;
+function packTaskDescription(tags, due, checklist, cleanDesc) {
+  const meta = {};
+  if (tags && tags.length > 0) meta.tags = tags;
+  if (due) meta.due = due;
+  if (checklist && checklist.length > 0) meta.checklist = checklist;
+
+  if (Object.keys(meta).length === 0) return cleanDesc;
+  return `[meta:${JSON.stringify(meta)}]---${cleanDesc}`;
+}
+
+function updateSprintSummary() {
+  if (!metricTasksCount) return;
+  const totalTasks = cachedTasks.length;
+  const totalPoints = cachedTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+  const urgentTasks = cachedTasks.filter(t => t.priority === "high").length;
+
+  const doneColIds = cachedColumns
+    .filter(c => (c.name || "").toLowerCase().includes("done") || (c.name || "").toLowerCase().includes("complete"))
+    .map(c => c.id);
+
+  const doneTasks = cachedTasks.filter(t => doneColIds.includes(t.column_id)).length;
+  const percent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+  metricTasksCount.textContent = totalTasks;
+  metricPointsCount.textContent = `${totalPoints} pts`;
+  metricUrgentCount.textContent = urgentTasks;
+  metricProgressPercent.textContent = `${percent}%`;
+  metricProgressFill.style.width = `${percent}%`;
 }
 
 async function renderBoard() {
@@ -206,6 +256,7 @@ async function renderBoard() {
     boardEl.appendChild(addColBtn);
   }
 
+  updateSprintSummary();
   applyFilters();
 }
 
@@ -263,11 +314,75 @@ function renderColumn(column, tasks) {
 }
 
 function getTagClass(tag) {
-  const lower = tag.toLowerCase();
-  if (["frontend", "backend", "bug", "feature", "devops", "design"].includes(lower)) {
+  const lower = (tag || "").toLowerCase();
+  if (["frontend", "backend", "bug", "feature", "devops", "design", "indigo", "cyan", "emerald", "amber", "rose", "purple", "slate"].includes(lower)) {
     return lower;
   }
-  return "general";
+  const colors = ["indigo", "cyan", "emerald", "amber", "rose", "purple"];
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function formatDueDateBadge(dueStr, isDoneColumn) {
+  if (!dueStr) return "";
+  const parts = dueStr.split("-");
+  if (parts.length !== 3) return "";
+  const dueDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dueDate.setHours(0, 0, 0, 0);
+
+  const diffTime = dueDate.getTime() - today.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const formattedDate = `${monthNames[dueDate.getMonth()]} ${dueDate.getDate()}`;
+
+  if (isDoneColumn) {
+    return `<span class="due-badge done" title="Completed">✓ ${formattedDate}</span>`;
+  }
+  if (diffDays < 0) {
+    return `<span class="due-badge overdue" title="Overdue by ${Math.abs(diffDays)} day(s)">⚠ ${formattedDate}</span>`;
+  }
+  if (diffDays === 0) {
+    return `<span class="due-badge today" title="Due today">⏰ Today</span>`;
+  }
+  if (diffDays === 1) {
+    return `<span class="due-badge upcoming" title="Due tomorrow">⏰ Tomorrow</span>`;
+  }
+  return `<span class="due-badge upcoming" title="Due ${formattedDate}">📅 ${formattedDate}</span>`;
+}
+
+function renderCardChecklistHtml(checklist) {
+  if (!checklist || checklist.length === 0) return "";
+  const doneCount = checklist.filter(c => c.d).length;
+  const totalCount = checklist.length;
+  const percent = Math.round((doneCount / totalCount) * 100);
+
+  const itemsHtml = checklist.map((item, idx) => `
+    <label class="card-subtask-item ${item.d ? 'checked' : ''}">
+      <input type="checkbox" ${item.d ? 'checked' : ''} data-subtask-idx="${idx}">
+      <span>${escapeHtml(item.t)}</span>
+    </label>
+  `).join("");
+
+  return `
+    <div class="card-checklist">
+      <div class="checklist-progress-header">
+        <span>Subtasks</span>
+        <span>${doneCount}/${totalCount} (${percent}%)</span>
+      </div>
+      <div class="checklist-progress-track">
+        <div class="checklist-progress-fill" style="width: ${percent}%;"></div>
+      </div>
+      <div class="card-subtask-list">
+        ${itemsHtml}
+      </div>
+    </div>
+  `;
 }
 
 function renderTaskCard(task) {
@@ -277,7 +392,7 @@ function renderTaskCard(task) {
   card.dataset.priority = task.priority || "medium";
   card.draggable = true;
 
-  const { tags, desc } = parseTaskDescription(task.description);
+  const { tags, due, checklist, desc } = parseTaskDescription(task.description);
   card.dataset.tags = tags.join(",").toLowerCase();
   card.dataset.name = (task.name || "").toLowerCase();
   card.dataset.desc = desc.toLowerCase();
@@ -287,7 +402,7 @@ function renderTaskCard(task) {
   });
 
   card.addEventListener("click", (e) => {
-    if (!e.target.closest(".avatar")) {
+    if (!e.target.closest(".avatar") && !e.target.closest(".card-subtask-item") && !e.target.closest(".tag-chip")) {
       openTaskModal(task.column_id, task);
     }
   });
@@ -298,8 +413,13 @@ function renderTaskCard(task) {
   };
 
   const tagChipsHtml = tags.length > 0
-    ? `<div class="task-tags">${tags.map(t => `<span class="tag-chip ${getTagClass(t)}">${escapeHtml(t)}</span>`).join("")}</div>`
+    ? `<div class="task-tags">${tags.map(t => `<span class="tag-chip ${getTagClass(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</span>`).join("")}</div>`
     : "";
+
+  const col = cachedColumns.find(c => c.id === task.column_id);
+  const isDoneColumn = col && ((col.name || "").toLowerCase().includes("done") || (col.name || "").toLowerCase().includes("complete"));
+  const dueBadgeHtml = formatDueDateBadge(due, isDoneColumn);
+  const checklistHtml = renderCardChecklistHtml(checklist);
 
   const validAssignees = (task.assignees || []).filter(Boolean);
 
@@ -307,6 +427,8 @@ function renderTaskCard(task) {
     <h3>${escapeHtml(task.name)}</h3>
     ${tagChipsHtml}
     ${desc ? `<p class="desc">${escapeHtml(desc)}</p>` : ""}
+    ${dueBadgeHtml}
+    ${checklistHtml}
     <div class="task-meta">
       <span class="priority-badge ${task.priority}">${escapeHtml(task.priority)}</span>
       <span class="story-points">${task.story_points ?? 0} pts</span>
@@ -315,6 +437,45 @@ function renderTaskCard(task) {
       ${validAssignees.map(a => `<span class="avatar" title="${escapeHtml(a.full_name || a.email || '')}">${initials(a.full_name || a.email || 'U')}</span>`).join("")}
     </div>
   `;
+
+  card.querySelectorAll(".tag-chip").forEach(chip => {
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const clickedTag = chip.dataset.tag;
+      if (!clickedTag) return;
+      activeFilterTag = (activeFilterTag.toLowerCase() === clickedTag.toLowerCase()) ? "all" : clickedTag;
+      document.querySelectorAll("[data-filter-tag]").forEach(b => {
+        b.classList.toggle("active", b.dataset.filterTag.toLowerCase() === activeFilterTag.toLowerCase());
+      });
+      applyFilters();
+    });
+  });
+
+  card.querySelectorAll('.card-subtask-item input[type="checkbox"]').forEach(chk => {
+    chk.addEventListener("change", async (e) => {
+      e.stopPropagation();
+      const idx = parseInt(chk.dataset.subtaskIdx, 10);
+      const targetTask = cachedTasks.find(t => t.id === task.id);
+      if (!targetTask) return;
+      const meta = parseTaskDescription(targetTask.description);
+      if (meta.checklist && meta.checklist[idx] !== undefined) {
+        meta.checklist[idx].d = chk.checked;
+        const newPacked = packTaskDescription(meta.tags, meta.due, meta.checklist, meta.desc);
+        try {
+          await api(`/projects/${currentProject.id}/tasks/${task.id}`, {
+            method: "PATCH",
+            body: { description: newPacked },
+          });
+          targetTask.description = newPacked;
+          renderBoard();
+        } catch (err) {
+          showToast(err.message, "error");
+          chk.checked = !chk.checked;
+        }
+      }
+    });
+  });
+
   return card;
 }
 
@@ -331,6 +492,48 @@ function populateAssigneeOptions() {
     .join("");
 }
 
+function renderModalChecklist() {
+  if (!modalChecklistContainer) return;
+  modalChecklistContainer.innerHTML = "";
+  modalChecklist.forEach((item, idx) => {
+    const row = document.createElement("div");
+    row.className = "modal-subtask-item";
+    row.innerHTML = `
+      <label class="modal-subtask-item-label">
+        <input type="checkbox" ${item.d ? "checked" : ""}>
+        <span style="${item.d ? 'text-decoration:line-through; color:var(--ink-muted);' : ''}">${escapeHtml(item.t)}</span>
+      </label>
+      <button type="button" class="modal-subtask-delete" title="Remove subtask">×</button>
+    `;
+    row.querySelector('input[type="checkbox"]').addEventListener("change", (e) => {
+      item.d = e.target.checked;
+      renderModalChecklist();
+    });
+    row.querySelector(".modal-subtask-delete").addEventListener("click", () => {
+      modalChecklist.splice(idx, 1);
+      renderModalChecklist();
+    });
+    modalChecklistContainer.appendChild(row);
+  });
+}
+
+if (addSubtaskBtn && newSubtaskInput) {
+  const addSubtask = () => {
+    const val = newSubtaskInput.value.trim();
+    if (!val) return;
+    modalChecklist.push({ t: val, d: false });
+    newSubtaskInput.value = "";
+    renderModalChecklist();
+  };
+  addSubtaskBtn.addEventListener("click", addSubtask);
+  newSubtaskInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addSubtask();
+    }
+  });
+}
+
 function openTaskModal(columnId, task = null) {
   activeColumnIdForNewTask = columnId;
   editingTaskId = task ? task.id : null;
@@ -341,10 +544,14 @@ function openTaskModal(columnId, task = null) {
     document.getElementById("modalTitle").textContent = "Edit Task";
     document.getElementById("taskName").value = task.name || "";
 
-    const { tags, desc } = parseTaskDescription(task.description);
+    const { tags, due, checklist, desc } = parseTaskDescription(task.description);
     document.getElementById("taskDescription").value = desc || "";
     document.getElementById("taskPriority").value = task.priority || "medium";
     document.getElementById("taskPoints").value = task.story_points ?? 1;
+    if (taskDueDate) taskDueDate.value = due || "";
+
+    modalChecklist = (checklist || []).map(c => ({ t: c.t, d: !!c.d }));
+    renderModalChecklist();
 
     tags.forEach(t => selectOrCreateTagChip(t));
 
@@ -360,6 +567,9 @@ function openTaskModal(columnId, task = null) {
     document.getElementById("modalTitle").textContent = "New Task";
     taskForm.reset();
     document.getElementById("taskPoints").value = 1;
+    if (taskDueDate) taskDueDate.value = "";
+    modalChecklist = [];
+    renderModalChecklist();
     Array.from(assigneesSelect.options).forEach(opt => {
       opt.selected = false;
     });
@@ -442,7 +652,8 @@ taskForm.addEventListener("submit", async (e) => {
   const selectedTags = Array.from(tagChipsContainer.querySelectorAll(".tag-option-btn.selected"))
     .map(btn => btn.dataset.tag);
   const cleanDescription = document.getElementById("taskDescription").value.trim();
-  const packedDescription = packTaskDescription(selectedTags, cleanDescription);
+  const dueDateVal = taskDueDate ? taskDueDate.value : "";
+  const packedDescription = packTaskDescription(selectedTags, dueDateVal, modalChecklist, cleanDescription);
 
   const taskData = {
     name: document.getElementById("taskName").value.trim(),

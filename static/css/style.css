@@ -435,6 +435,68 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   border-color: var(--accent);
 }
 
+.sprint-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.65rem 1.25rem;
+  margin: 0 1.5rem 0.5rem 1.5rem;
+}
+
+.sprint-metric {
+  display: flex;
+  flex-direction: column;
+}
+
+.sprint-metric-value {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.sprint-metric-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.sprint-progress-wrapper {
+  flex: 1;
+  max-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+.sprint-progress-text {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.sprint-progress-bar {
+  height: 7px;
+  background: var(--lane);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.sprint-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .board {
   display: flex;
   gap: 1.25rem;
@@ -563,6 +625,13 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   font-weight: 500;
   display: inline-flex;
   align-items: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.tag-chip:hover {
+  transform: translateY(-1px);
+  opacity: 0.9;
 }
 
 .tag-chip.frontend { background: #DBEAFE; color: #1E40AF; }
@@ -571,7 +640,109 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
 .tag-chip.feature { background: #DCFCE7; color: #166534; }
 .tag-chip.devops { background: #FEF3C7; color: #92400E; }
 .tag-chip.design { background: #FCE7F3; color: #9D174D; }
+.tag-chip.indigo { background: #E0E7FF; color: #3730A3; }
+.tag-chip.cyan { background: #E0F2FE; color: #0369A1; }
+.tag-chip.emerald { background: #D1FAE5; color: #065F46; }
+.tag-chip.amber { background: #FEF3C7; color: #92400E; }
+.tag-chip.rose { background: #FFE4E6; color: #9F1239; }
+.tag-chip.purple { background: #F3E8FF; color: #6B21A8; }
+.tag-chip.slate { background: #F1F5F9; color: #334155; }
 .tag-chip.general { background: var(--lane); color: var(--ink-muted); border: 1px solid var(--border); }
+
+.due-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  margin-top: 0.45rem;
+  width: fit-content;
+}
+
+.due-badge.overdue {
+  background: #FEE2E2;
+  color: #991B1B;
+  border: 1px solid #FCA5A5;
+}
+
+.due-badge.today {
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FCD34D;
+}
+
+.due-badge.upcoming {
+  background: var(--lane);
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+}
+
+.due-badge.done {
+  background: #DCFCE7;
+  color: #166534;
+  border: 1px solid #86EFAC;
+}
+
+.card-checklist {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--border);
+}
+
+.checklist-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.7rem;
+  color: var(--ink-muted);
+  margin-bottom: 0.25rem;
+  font-family: var(--font-mono);
+}
+
+.checklist-progress-track {
+  height: 4px;
+  background: var(--lane);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.checklist-progress-fill {
+  height: 100%;
+  background: #10B981;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.card-subtask-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.card-subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.card-subtask-item input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 13px;
+  height: 13px;
+}
+
+.card-subtask-item.checked span {
+  text-decoration: line-through;
+  color: var(--ink-muted);
+}
 
 .task-meta {
   display: flex;
@@ -766,6 +937,62 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+.checklist-builder {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: var(--lane);
+}
+
+.checklist-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.modal-subtask-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.8rem;
+}
+
+.modal-subtask-item-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+.modal-subtask-item-label input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+
+.modal-subtask-delete {
+  background: transparent;
+  color: var(--ink-muted);
+  padding: 0 0.3rem;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.modal-subtask-delete:hover {
+  color: #DC2626;
+  background: rgba(220, 38, 38, 0.1);
 }
 
 .settings-modal {
@@ -967,4 +1194,6 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   .column { width: 100%; flex: none; }
   .filter-bar { flex-direction: column; align-items: stretch; }
   .filter-input { width: 100%; }
+  .sprint-summary-bar { flex-wrap: wrap; gap: 1rem; margin: 0 1rem 0.5rem 1rem; }
+  .sprint-progress-wrapper { max-width: 100%; width: 100%; margin-left: 0; }
 }

@@ -57,6 +57,30 @@
     </div>
   </div>
 
+  <div class="sprint-summary-bar" id="sprintSummaryBar">
+    <div class="sprint-metric">
+      <span class="sprint-metric-value" id="metricTasksCount">0</span>
+      <span class="sprint-metric-label">Total Tasks</span>
+    </div>
+    <div class="sprint-metric">
+      <span class="sprint-metric-value" id="metricPointsCount">0 pts</span>
+      <span class="sprint-metric-label">Story Points</span>
+    </div>
+    <div class="sprint-metric">
+      <span class="sprint-metric-value" id="metricUrgentCount">0</span>
+      <span class="sprint-metric-label">High Priority</span>
+    </div>
+    <div class="sprint-progress-wrapper">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="sprint-metric-label">Sprint Progress</span>
+        <span class="sprint-progress-text" id="metricProgressPercent">0%</span>
+      </div>
+      <div class="sprint-progress-bar">
+        <div class="sprint-progress-fill" id="metricProgressFill" style="width: 0%;"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="board" id="board"></div>
 
   <div class="modal-overlay" id="taskModalOverlay">
@@ -100,6 +124,20 @@
           <div class="field">
             <label for="taskPoints">Story points</label>
             <input type="number" id="taskPoints" min="0" max="10" value="1">
+          </div>
+          <div class="field">
+            <label for="taskDueDate">Due Date</label>
+            <input type="date" id="taskDueDate">
+          </div>
+        </div>
+        <div class="field">
+          <label>Subtasks / Checklist</label>
+          <div class="checklist-builder">
+            <div class="checklist-items-list" id="modalChecklistContainer"></div>
+            <div style="display:flex; gap:0.4rem; margin-top:0.4rem;">
+              <input type="text" id="newSubtaskInput" placeholder="Add a subtask item…" style="font-size:0.8rem; padding:0.35rem 0.6rem; flex:1;">
+              <button type="button" class="btn-secondary" id="addSubtaskBtn" style="font-size:0.8rem; padding:0.35rem 0.65rem;">+ Add Subtask</button>
+            </div>
           </div>
         </div>
         <div class="field">
