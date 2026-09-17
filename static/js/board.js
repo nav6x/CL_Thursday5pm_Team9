@@ -17,6 +17,12 @@ const boardEl = document.getElementById("board");
 const modalOverlay = document.getElementById("taskModalOverlay");
 const taskForm = document.getElementById("taskForm");
 const assigneesSelect = document.getElementById("taskAssignees");
+const projectSelect = document.getElementById("projectSelect");
+const newProjectBtn = document.getElementById("newProjectBtn");
+const topAddTaskBtn = document.getElementById("topAddTaskBtn");
+const projectModalOverlay = document.getElementById("projectModalOverlay");
+const projectForm = document.getElementById("projectForm");
+const cancelProjectBtn = document.getElementById("cancelProjectBtn");
 
 init();
 
@@ -29,27 +35,37 @@ function showLoadingSkeleton() {
     </div>`;
 }
 
-async function init() {
+async function init(preferredProjectId = null) {
   showLoadingSkeleton();
   try {
     let projects = await api("/projects");
 
-    // If the user has no project, auto-create one
     if (!projects || projects.length === 0) {
       await api("/projects", {
         method: "POST",
         body: { name: "My First Project" },
       });
-
-      // Refetch projects to get complete details including my_role
       projects = await api("/projects");
     }
 
-    currentProject = projects[0];
+    currentProject = preferredProjectId
+      ? projects.find(p => p.id === preferredProjectId) || projects[0]
+      : projects[0];
     currentRole = currentProject.my_role;
 
     document.getElementById("projectName").innerHTML =
       `${escapeHtml(currentProject.name)} <span class="role-badge">${currentRole === "leader" ? "Project Leader" : "Developer"}</span>`;
+
+    if (projectSelect) {
+      if (projects.length > 1) {
+        projectSelect.style.display = "inline-block";
+        projectSelect.innerHTML = projects
+          .map(p => `<option value="${p.id}" ${p.id === currentProject.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`)
+          .join("");
+      } else {
+        projectSelect.style.display = "none";
+      }
+    }
 
     // Fetch members and columns concurrently
     const [membersData, columnsData] = await Promise.all([
@@ -252,4 +268,58 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str || "";
   return div.innerHTML;
+}
+
+if (newProjectBtn) {
+  newProjectBtn.addEventListener("click", () => {
+    if (projectForm) projectForm.reset();
+    if (projectModalOverlay) projectModalOverlay.classList.add("open");
+  });
+}
+
+if (cancelProjectBtn) {
+  cancelProjectBtn.addEventListener("click", () => {
+    if (projectModalOverlay) projectModalOverlay.classList.remove("open");
+  });
+}
+
+if (projectForm) {
+  projectForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nameInput = document.getElementById("newProjectName");
+    const name = nameInput ? nameInput.value.trim() : "";
+    if (!name) return;
+    try {
+      const newProj = await api("/projects", {
+        method: "POST",
+        body: { name },
+      });
+      if (projectModalOverlay) projectModalOverlay.classList.remove("open");
+      showToast(`Project "${name}" created.`, "success");
+      await init(newProj.id);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+if (projectSelect) {
+  projectSelect.addEventListener("change", (e) => {
+    init(e.target.value);
+  });
+}
+
+if (topAddTaskBtn) {
+  topAddTaskBtn.addEventListener("click", async () => {
+    try {
+      const columns = await api(`/projects/${currentProject.id}/columns`);
+      if (columns && columns.length > 0) {
+        openTaskModal(columns[0].id);
+      } else {
+        showToast("No columns available to add tasks.", "error");
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
 }

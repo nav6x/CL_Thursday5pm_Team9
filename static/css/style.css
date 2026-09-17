@@ -444,3 +444,29 @@ button:disabled {
   .board { flex-direction: column; }
   .column { width: 100%; flex: none; }
 }
+
+.topbar-project {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.project-select {
+  font-size: 0.9rem;
+  padding: 0.35rem 0.6rem;
+  max-width: 220px;
+}
+
+.btn-secondary {
+  background: var(--lane);
+  color: var(--ink);
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background: var(--border);
+}

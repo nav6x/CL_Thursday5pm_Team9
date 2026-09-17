@@ -1,6 +1,6 @@
 // Talks to the Flask API. Adjust API_BASE if your backend runs
 // somewhere other than localhost:5000 (e.g. once you deploy it).
-const API_BASE = "/api";
+const API_BASE = window.location.port === "3000" ? "http://localhost:5000/api" : "/api";
 
 // ---- Token / user storage ----
 // Login happens on index.html but the board lives on board.html, so

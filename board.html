@@ -8,8 +8,11 @@
 </head>
 <body>
   <div class="topbar">
-    <div>
+    <div class="topbar-project">
       <h1 id="projectName">Loading…<span class="role-badge" id="roleBadge"></span></h1>
+      <select id="projectSelect" class="project-select" style="display:none;"></select>
+      <button class="btn-secondary" id="newProjectBtn">+ New Project</button>
+      <button class="btn-primary" id="topAddTaskBtn" style="width:auto; padding:0.45rem 0.9rem; font-size:0.85rem;">+ New Task</button>
     </div>
     <div class="topbar-user">
       <span id="userName"></span>
@@ -18,7 +21,6 @@
   </div>
 
   <div class="board" id="board">
-    <!-- columns injected here by board.js -->
   </div>
 
   <!-- Task creation / edit modal -->
@@ -55,6 +57,22 @@
         <div class="modal-actions">
           <button type="button" class="btn-ghost" id="cancelTaskBtn">Cancel</button>
           <button type="submit" class="btn-primary" style="width:auto; padding-left:1.2rem; padding-right:1.2rem;">Save task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="projectModalOverlay">
+    <div class="modal">
+      <h2>New Project</h2>
+      <form id="projectForm">
+        <div class="field">
+          <label for="newProjectName">Project Name</label>
+          <input type="text" id="newProjectName" placeholder="e.g. Sprint 1 Board" required>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="cancelProjectBtn">Cancel</button>
+          <button type="submit" class="btn-primary" style="width:auto; padding-left:1.2rem; padding-right:1.2rem;">Create project</button>
         </div>
       </form>
     </div>
