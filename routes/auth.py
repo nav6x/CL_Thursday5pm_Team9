@@ -58,3 +58,9 @@ def login():
         "access_token": result.session.access_token,
         "user": {"id": result.user.id, "email": result.user.email},
     }), 200
+
+
+@auth_bp.route("/users", methods=["GET"])
+def list_users():
+    result = supabase.table("profiles").select("id, full_name, email").execute()
+    return jsonify(result.data), 200

@@ -53,6 +53,8 @@ const projectDangerZone = document.getElementById("projectDangerZone");
 const addMemberSection = document.getElementById("addMemberSection");
 const addMemberForm = document.getElementById("addMemberForm");
 const memberListContainer = document.getElementById("memberListContainer");
+const workspaceUsersContainer = document.getElementById("workspaceUsersContainer");
+const addAllMembersBtn = document.getElementById("addAllMembersBtn");
 
 const tagChipsContainer = document.getElementById("tagChipsContainer");
 const customTagInput = document.getElementById("customTagInput");
@@ -109,6 +111,9 @@ async function init(preferredProjectId = null) {
     }
     if (addMemberSection) {
       addMemberSection.style.display = currentRole === "leader" ? "block" : "none";
+    }
+    if (addAllMembersBtn) {
+      addAllMembersBtn.style.display = currentRole === "leader" ? "inline-block" : "none";
     }
 
     const [membersData, columnsData] = await Promise.all([
@@ -273,11 +278,16 @@ function renderTaskCard(task) {
     }
   });
 
-  const initials = (name) => name ? name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase() : "";
+  const initials = (name) => {
+    if (!name) return "";
+    return name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
+  };
 
   const tagChipsHtml = tags.length > 0
     ? `<div class="task-tags">${tags.map(t => `<span class="tag-chip ${getTagClass(t)}">${escapeHtml(t)}</span>`).join("")}</div>`
     : "";
+
+  const validAssignees = (task.assignees || []).filter(Boolean);
 
   card.innerHTML = `
     <h3>${escapeHtml(task.name)}</h3>
@@ -288,7 +298,7 @@ function renderTaskCard(task) {
       <span class="story-points">${task.story_points ?? 0} pts</span>
     </div>
     <div class="assignee-stack">
-      ${(task.assignees || []).map(a => `<span class="avatar" title="${escapeHtml(a.full_name)}">${initials(a.full_name)}</span>`).join("")}
+      ${validAssignees.map(a => `<span class="avatar" title="${escapeHtml(a.full_name || a.email || '')}">${initials(a.full_name || a.email || 'U')}</span>`).join("")}
     </div>
   `;
   return card;
@@ -297,7 +307,12 @@ function renderTaskCard(task) {
 function populateAssigneeOptions() {
   if (!assigneesSelect) return;
   assigneesSelect.innerHTML = projectMembers
-    .map(m => `<option value="${m.profiles.id}">${escapeHtml(m.profiles.full_name || m.profiles.email)}</option>`)
+    .filter(m => m && m.profiles)
+    .map(m => {
+      const p = m.profiles;
+      const label = p.full_name ? `${p.full_name} (${p.email})` : p.email;
+      return `<option value="${p.id}">${escapeHtml(label)}</option>`;
+    })
     .join("");
 }
 
@@ -318,7 +333,7 @@ function openTaskModal(columnId, task = null) {
 
     tags.forEach(t => selectOrCreateTagChip(t));
 
-    const assigneeIds = (task.assignees || []).map(a => a.id);
+    const assigneeIds = (task.assignees || []).filter(Boolean).map(a => a.id);
     Array.from(assigneesSelect.options).forEach(opt => {
       opt.selected = assigneeIds.includes(opt.value);
     });
@@ -330,6 +345,9 @@ function openTaskModal(columnId, task = null) {
     document.getElementById("modalTitle").textContent = "New Task";
     taskForm.reset();
     document.getElementById("taskPoints").value = 1;
+    Array.from(assigneesSelect.options).forEach(opt => {
+      opt.selected = false;
+    });
     if (deleteTaskBtn) {
       deleteTaskBtn.style.display = "none";
     }
@@ -636,81 +654,141 @@ if (deleteProjectBtn) {
 async function refreshMemberList() {
   if (!memberListContainer) return;
   try {
-    const members = await api(`/projects/${currentProject.id}/members`);
+    const [members, allUsers] = await Promise.all([
+      api(`/projects/${currentProject.id}/members`),
+      api("/auth/users"),
+    ]);
+
     projectMembers = members || [];
     populateAssigneeOptions();
 
     if (members.length === 0) {
       memberListContainer.innerHTML = `<div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">No members found.</div>`;
-      return;
-    }
+    } else {
+      memberListContainer.innerHTML = members.map(m => {
+        const p = m.profiles;
+        if (!p) return "";
+        const isLeader = m.role === "leader";
+        const isMe = p.id === user?.id;
 
-    memberListContainer.innerHTML = members.map(m => {
-      const p = m.profiles;
-      const isLeader = m.role === "leader";
-      const isMe = p.id === user?.id;
+        let actionsHtml = "";
+        if (currentRole === "leader") {
+          actionsHtml = `
+            <div class="member-actions">
+              <select class="member-role-select" data-user-id="${p.id}">
+                <option value="developer" ${!isLeader ? "selected" : ""}>Developer</option>
+                <option value="leader" ${isLeader ? "selected" : ""}>Leader</option>
+              </select>
+              ${!isMe ? `<button type="button" class="btn-ghost" data-remove-user-id="${p.id}" style="color:#DC2626; padding:0.2rem 0.5rem;">Remove</button>` : ""}
+            </div>
+          `;
+        } else {
+          actionsHtml = `<span class="role-badge">${isLeader ? "Leader" : "Developer"}</span>`;
+        }
 
-      let actionsHtml = "";
-      if (currentRole === "leader") {
-        actionsHtml = `
-          <div class="member-actions">
-            <select class="member-role-select" data-user-id="${p.id}">
-              <option value="developer" ${!isLeader ? "selected" : ""}>Developer</option>
-              <option value="leader" ${isLeader ? "selected" : ""}>Leader</option>
-            </select>
-            ${!isMe ? `<button type="button" class="btn-ghost" data-remove-user-id="${p.id}" style="color:#DC2626; padding:0.2rem 0.5rem;">Remove</button>` : ""}
+        return `
+          <div class="member-row">
+            <div class="member-info">
+              <span class="member-name">${escapeHtml(p.full_name || p.email)} ${isMe ? "(You)" : ""}</span>
+              <span class="member-email">${escapeHtml(p.email)}</span>
+            </div>
+            ${actionsHtml}
           </div>
         `;
+      }).join("");
+
+      memberListContainer.querySelectorAll(".member-role-select").forEach(select => {
+        select.addEventListener("change", async (e) => {
+          const uid = e.target.dataset.userId;
+          const newRole = e.target.value;
+          try {
+            await api(`/projects/${currentProject.id}/members/${uid}`, {
+              method: "PATCH",
+              body: { role: newRole },
+            });
+            showToast("Member role updated.", "success");
+            await refreshMemberList();
+          } catch (err) {
+            showToast(err.message, "error");
+          }
+        });
+      });
+
+      memberListContainer.querySelectorAll("[data-remove-user-id]").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          const uid = e.target.dataset.removeUserId;
+          if (!confirm("Remove this member from the project?")) return;
+          try {
+            await api(`/projects/${currentProject.id}/members/${uid}`, {
+              method: "DELETE",
+            });
+            showToast("Member removed.", "success");
+            await refreshMemberList();
+          } catch (err) {
+            showToast(err.message, "error");
+          }
+        });
+      });
+    }
+
+    if (workspaceUsersContainer) {
+      const memberUids = new Set(projectMembers.filter(m => m.profiles).map(m => m.profiles.id));
+      if (!allUsers || allUsers.length === 0) {
+        workspaceUsersContainer.innerHTML = `<div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">No other registered users.</div>`;
       } else {
-        actionsHtml = `<span class="role-badge">${isLeader ? "Leader" : "Developer"}</span>`;
+        workspaceUsersContainer.innerHTML = allUsers.map(u => {
+          const inProject = memberUids.has(u.id);
+          const isMe = u.id === user?.id;
+          return `
+            <div class="member-row">
+              <div class="member-info">
+                <span class="member-name">${escapeHtml(u.full_name || u.email)} ${isMe ? "(You)" : ""}</span>
+                <span class="member-email">${escapeHtml(u.email)}</span>
+              </div>
+              <div>
+                ${inProject
+                  ? `<span class="role-badge" style="background:var(--surface);">On Team</span>`
+                  : currentRole === "leader"
+                    ? `<button type="button" class="btn-secondary" data-add-workspace-user-id="${u.id}" style="font-size:0.75rem; padding:0.25rem 0.6rem;">+ Add to Project</button>`
+                    : ""
+                }
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        workspaceUsersContainer.querySelectorAll("[data-add-workspace-user-id]").forEach(btn => {
+          btn.addEventListener("click", async (e) => {
+            const uid = e.target.dataset.addWorkspaceUserId;
+            try {
+              await api(`/projects/${currentProject.id}/members`, {
+                method: "POST",
+                body: { user_id: uid, role: "developer" },
+              });
+              showToast("Member added to project.", "success");
+              await refreshMemberList();
+            } catch (err) {
+              showToast(err.message, "error");
+            }
+          });
+        });
       }
-
-      return `
-        <div class="member-row">
-          <div class="member-info">
-            <span class="member-name">${escapeHtml(p.full_name || p.email)} ${isMe ? "(You)" : ""}</span>
-            <span class="member-email">${escapeHtml(p.email)}</span>
-          </div>
-          ${actionsHtml}
-        </div>
-      `;
-    }).join("");
-
-    memberListContainer.querySelectorAll(".member-role-select").forEach(select => {
-      select.addEventListener("change", async (e) => {
-        const uid = e.target.dataset.userId;
-        const newRole = e.target.value;
-        try {
-          await api(`/projects/${currentProject.id}/members/${uid}`, {
-            method: "PATCH",
-            body: { role: newRole },
-          });
-          showToast("Member role updated.", "success");
-          await refreshMemberList();
-        } catch (err) {
-          showToast(err.message, "error");
-        }
-      });
-    });
-
-    memberListContainer.querySelectorAll("[data-remove-user-id]").forEach(btn => {
-      btn.addEventListener("click", async (e) => {
-        const uid = e.target.dataset.removeUserId;
-        if (!confirm("Remove this member from the project?")) return;
-        try {
-          await api(`/projects/${currentProject.id}/members/${uid}`, {
-            method: "DELETE",
-          });
-          showToast("Member removed.", "success");
-          await refreshMemberList();
-        } catch (err) {
-          showToast(err.message, "error");
-        }
-      });
-    });
+    }
   } catch (err) {
     memberListContainer.innerHTML = `<div style="font-size:0.85rem; color:#DC2626; padding:0.5rem 0;">${escapeHtml(err.message)}</div>`;
   }
+}
+
+if (addAllMembersBtn) {
+  addAllMembersBtn.addEventListener("click", async () => {
+    try {
+      await api(`/projects/${currentProject.id}/members/all`, { method: "POST" });
+      showToast("All workspace users added to project.", "success");
+      await refreshMemberList();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
 }
 
 if (addMemberForm) {

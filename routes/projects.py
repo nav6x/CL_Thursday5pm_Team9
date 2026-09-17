@@ -77,27 +77,67 @@ def list_members(project_id):
 @login_required
 @require_role("leader")
 def add_member(project_id):
-    """Only a Project Leader can add teammates to the project."""
     body = request.get_json(force=True)
-    email = body.get("email", "").strip().lower()
     role = body.get("role", "developer")
 
     if role not in ("leader", "developer"):
         return jsonify({"error": "role must be 'leader' or 'developer'"}), 400
 
-    profile = (
-        supabase.table("profiles").select("id").eq("email", email).maybe_single().execute()
-    )
+    user_id = body.get("user_id")
+    if user_id:
+        profile = supabase.table("profiles").select("id").eq("id", user_id).maybe_single().execute()
+    else:
+        email = body.get("email", "").strip().lower()
+        if not email:
+            return jsonify({"error": "email or user_id required"}), 400
+        profile = supabase.table("profiles").select("id").eq("email", email).maybe_single().execute()
+
     if not profile.data:
         return jsonify({"error": "No user found with that email — they need to sign up first"}), 404
 
+    target_id = profile.data["id"]
+    existing = (
+        supabase.table("project_members")
+        .select("id")
+        .eq("project_id", project_id)
+        .eq("user_id", target_id)
+        .maybe_single()
+        .execute()
+    )
+    if existing.data:
+        return jsonify({"message": "User is already a member of this project"}), 200
+
     supabase.table("project_members").insert({
         "project_id": project_id,
-        "user_id": profile.data["id"],
+        "user_id": target_id,
         "role": role,
     }).execute()
 
     return jsonify({"message": "Member added"}), 201
+
+
+@projects_bp.route("/<project_id>/members/all", methods=["POST"])
+@login_required
+@require_role("leader")
+def add_all_members(project_id):
+    all_users = supabase.table("profiles").select("id").execute().data or []
+    for u in all_users:
+        existing = (
+            supabase.table("project_members")
+            .select("id")
+            .eq("project_id", project_id)
+            .eq("user_id", u["id"])
+            .maybe_single()
+            .execute()
+        )
+        if not existing.data:
+            supabase.table("project_members").insert({
+                "project_id": project_id,
+                "user_id": u["id"],
+                "role": "developer",
+            }).execute()
+
+    return jsonify({"message": "All workspace users added to project"}), 200
 
 
 @projects_bp.route("/<project_id>", methods=["PATCH"])

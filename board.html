@@ -103,8 +103,9 @@
           </div>
         </div>
         <div class="field">
-          <label for="taskAssignees">Assignees</label>
-          <select id="taskAssignees" multiple size="3"></select>
+          <label for="taskAssignees">Assignees (Hold Ctrl or Cmd to select multiple)</label>
+          <select id="taskAssignees" multiple size="4"></select>
+          <span style="font-size:0.75rem; color:var(--ink-muted); margin-top:0.2rem;" id="assigneeHint">Assign one or more teammates to this task.</span>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-danger" id="deleteTaskBtn" style="display:none; margin-right:auto;">Delete task</button>
@@ -180,9 +181,17 @@
           </form>
         </div>
 
-        <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted);">Project Members</label>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem;">
+          <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted);">Project Members</label>
+          <button type="button" class="btn-secondary" id="addAllMembersBtn" style="font-size:0.75rem; padding:0.25rem 0.6rem;">+ Add All Workspace Users</button>
+        </div>
         <div class="member-list" id="memberListContainer">
           <div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">Loading members…</div>
+        </div>
+
+        <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted); margin-top:1rem; display:block;">Workspace Directory</label>
+        <div class="member-list" id="workspaceUsersContainer">
+          <div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">Loading workspace users…</div>
         </div>
       </div>
 

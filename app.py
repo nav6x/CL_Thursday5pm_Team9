@@ -19,6 +19,7 @@ app.register_blueprint(tasks_bp)
 
 
 @app.route("/")
+@app.route("/index.html")
 def serve_index():
     return send_from_directory(".", "index.html")
 
