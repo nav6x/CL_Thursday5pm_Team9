@@ -66,6 +66,11 @@ const modalChecklistContainer = document.getElementById("modalChecklistContainer
 const newSubtaskInput = document.getElementById("newSubtaskInput");
 const addSubtaskBtn = document.getElementById("addSubtaskBtn");
 
+const commentsThreadContainer = document.getElementById("commentsThreadContainer");
+const commentCountBadge = document.getElementById("commentCountBadge");
+const newCommentInput = document.getElementById("newCommentInput");
+const addCommentBtn = document.getElementById("addCommentBtn");
+
 const metricTasksCount = document.getElementById("metricTasksCount");
 const metricPointsCount = document.getElementById("metricPointsCount");
 const metricUrgentCount = document.getElementById("metricUrgentCount");
@@ -73,6 +78,7 @@ const metricProgressPercent = document.getElementById("metricProgressPercent");
 const metricProgressFill = document.getElementById("metricProgressFill");
 
 let modalChecklist = [];
+let modalComments = [];
 
 const searchInput = document.getElementById("searchInput");
 
@@ -181,7 +187,7 @@ async function init(preferredProjectId = null) {
 }
 
 function parseTaskDescription(rawDesc) {
-  if (!rawDesc) return { tags: [], due: "", checklist: [], desc: "" };
+  if (!rawDesc) return { tags: [], due: "", checklist: [], comments: [], desc: "" };
   const metaMatch = rawDesc.match(/^\[meta:(\{[\s\S]*?\})\]---([\s\S]*)$/);
   if (metaMatch) {
     try {
@@ -190,6 +196,7 @@ function parseTaskDescription(rawDesc) {
         tags: Array.isArray(meta.tags) ? meta.tags : [],
         due: meta.due || "",
         checklist: Array.isArray(meta.checklist) ? meta.checklist : [],
+        comments: Array.isArray(meta.comments) ? meta.comments : [],
         desc: (metaMatch[2] || "").trim()
       };
     } catch (e) {}
@@ -197,16 +204,17 @@ function parseTaskDescription(rawDesc) {
   const tagMatch = rawDesc.match(/^\[tags:([^\]]*)\]\s*([\s\S]*)$/);
   if (tagMatch) {
     const tags = tagMatch[1].split(",").map(t => t.trim()).filter(Boolean);
-    return { tags, due: "", checklist: [], desc: tagMatch[2].trim() };
+    return { tags, due: "", checklist: [], comments: [], desc: tagMatch[2].trim() };
   }
-  return { tags: [], due: "", checklist: [], desc: rawDesc.trim() };
+  return { tags: [], due: "", checklist: [], comments: [], desc: rawDesc.trim() };
 }
 
-function packTaskDescription(tags, due, checklist, cleanDesc) {
+function packTaskDescription(tags, due, checklist, comments, cleanDesc) {
   const meta = {};
   if (tags && tags.length > 0) meta.tags = tags;
   if (due) meta.due = due;
   if (checklist && checklist.length > 0) meta.checklist = checklist;
+  if (comments && comments.length > 0) meta.comments = comments;
 
   if (Object.keys(meta).length === 0) return cleanDesc;
   return `[meta:${JSON.stringify(meta)}]---${cleanDesc}`;
@@ -392,7 +400,7 @@ function renderTaskCard(task) {
   card.dataset.priority = task.priority || "medium";
   card.draggable = true;
 
-  const { tags, due, checklist, desc } = parseTaskDescription(task.description);
+  const { tags, due, checklist, comments, desc } = parseTaskDescription(task.description);
   card.dataset.tags = tags.join(",").toLowerCase();
   card.dataset.name = (task.name || "").toLowerCase();
   card.dataset.desc = desc.toLowerCase();
@@ -420,6 +428,9 @@ function renderTaskCard(task) {
   const isDoneColumn = col && ((col.name || "").toLowerCase().includes("done") || (col.name || "").toLowerCase().includes("complete"));
   const dueBadgeHtml = formatDueDateBadge(due, isDoneColumn);
   const checklistHtml = renderCardChecklistHtml(checklist);
+  const commentCountBadgeHtml = (comments && comments.length > 0)
+    ? `<span class="task-comments-badge">💬 ${comments.length}</span>`
+    : "";
 
   const validAssignees = (task.assignees || []).filter(Boolean);
 
@@ -431,7 +442,10 @@ function renderTaskCard(task) {
     ${checklistHtml}
     <div class="task-meta">
       <span class="priority-badge ${task.priority}">${escapeHtml(task.priority)}</span>
-      <span class="story-points">${task.story_points ?? 0} pts</span>
+      <div style="display:flex; align-items:center; gap:0.35rem;">
+        ${commentCountBadgeHtml}
+        <span class="story-points">${task.story_points ?? 0} pts</span>
+      </div>
     </div>
     <div class="assignee-stack">
       ${validAssignees.map(a => `<span class="avatar" title="${escapeHtml(a.full_name || a.email || '')}">${initials(a.full_name || a.email || 'U')}</span>`).join("")}
@@ -460,7 +474,7 @@ function renderTaskCard(task) {
       const meta = parseTaskDescription(targetTask.description);
       if (meta.checklist && meta.checklist[idx] !== undefined) {
         meta.checklist[idx].d = chk.checked;
-        const newPacked = packTaskDescription(meta.tags, meta.due, meta.checklist, meta.desc);
+        const newPacked = packTaskDescription(meta.tags, meta.due, meta.checklist, meta.comments, meta.desc);
         try {
           await api(`/projects/${currentProject.id}/tasks/${task.id}`, {
             method: "PATCH",
@@ -534,6 +548,134 @@ if (addSubtaskBtn && newSubtaskInput) {
   });
 }
 
+function formatCommentTime(isoStr) {
+  if (!isoStr) return "";
+  try {
+    const date = new Date(isoStr);
+    const now = new Date();
+    const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (diffSec < 60) return "just now";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${months[date.getMonth()]} ${date.getDate()}`;
+  } catch (e) {
+    return "";
+  }
+}
+
+function renderModalComments() {
+  if (!commentsThreadContainer || !commentCountBadge) return;
+  commentCountBadge.textContent = `${modalComments.length} comment${modalComments.length === 1 ? "" : "s"}`;
+  commentsThreadContainer.innerHTML = "";
+
+  if (modalComments.length === 0) {
+    commentsThreadContainer.innerHTML = `<div class="comment-empty">No comments yet. Start the discussion!</div>`;
+    return;
+  }
+
+  const initials = (name) => {
+    if (!name) return "U";
+    return name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
+  };
+
+  modalComments.forEach((c, idx) => {
+    const item = document.createElement("div");
+    item.className = "comment-item";
+    const canDelete = currentRole === "leader" || c.user_id === user?.id;
+    const badgeClass = getRoleBadgeClass(c.role || "Developer");
+    const timeFormatted = formatCommentTime(c.created_at);
+
+    item.innerHTML = `
+      <div class="comment-header">
+        <div class="comment-author-info">
+          <span class="comment-author-avatar">${initials(c.user_name || "User")}</span>
+          <span class="comment-author-name">${escapeHtml(c.user_name || "Teammate")}</span>
+          <span class="role-badge ${badgeClass} comment-author-role">${escapeHtml(c.role || "Developer")}</span>
+        </div>
+        <div class="comment-meta-right">
+          <span class="comment-time">${escapeHtml(timeFormatted)}</span>
+          ${canDelete ? `<button type="button" class="comment-delete-btn" title="Delete comment">×</button>` : ""}
+        </div>
+      </div>
+      <div class="comment-body">${escapeHtml(c.text)}</div>
+    `;
+
+    if (canDelete) {
+      item.querySelector(".comment-delete-btn")?.addEventListener("click", async () => {
+        modalComments.splice(idx, 1);
+        renderModalComments();
+        if (editingTaskId) {
+          await persistCurrentComments();
+        }
+      });
+    }
+
+    commentsThreadContainer.appendChild(item);
+  });
+
+  commentsThreadContainer.scrollTop = commentsThreadContainer.scrollHeight;
+}
+
+async function persistCurrentComments() {
+  if (!editingTaskId) return;
+  const targetTask = cachedTasks.find(t => t.id === editingTaskId);
+  if (!targetTask) return;
+  const meta = parseTaskDescription(targetTask.description);
+  const newPacked = packTaskDescription(meta.tags, meta.due, meta.checklist, modalComments, meta.desc);
+  try {
+    await api(`/projects/${currentProject.id}/tasks/${editingTaskId}`, {
+      method: "PATCH",
+      body: { description: newPacked },
+    });
+    targetTask.description = newPacked;
+    renderBoard();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+async function handleAddComment() {
+  if (!newCommentInput) return;
+  const text = newCommentInput.value.trim();
+  if (!text) return;
+
+  const myProfile = projectMembers.find(m => m.profiles && m.profiles.id === user?.id);
+  const rawFullName = myProfile?.profiles?.full_name || user?.email?.split("@")[0] || "User";
+  const cleanName = rawFullName.split("[")[0].trim();
+
+  const newComment = {
+    id: Date.now().toString(),
+    user_id: user?.id || "",
+    user_name: cleanName,
+    role: currentAgileRole,
+    text: text,
+    created_at: new Date().toISOString(),
+  };
+
+  modalComments.push(newComment);
+  newCommentInput.value = "";
+  renderModalComments();
+
+  if (editingTaskId) {
+    await persistCurrentComments();
+  }
+}
+
+if (addCommentBtn && newCommentInput) {
+  addCommentBtn.addEventListener("click", handleAddComment);
+  newCommentInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleAddComment();
+    }
+  });
+}
+
 function openTaskModal(columnId, task = null) {
   activeColumnIdForNewTask = columnId;
   editingTaskId = task ? task.id : null;
@@ -544,7 +686,7 @@ function openTaskModal(columnId, task = null) {
     document.getElementById("modalTitle").textContent = "Edit Task";
     document.getElementById("taskName").value = task.name || "";
 
-    const { tags, due, checklist, desc } = parseTaskDescription(task.description);
+    const { tags, due, checklist, comments, desc } = parseTaskDescription(task.description);
     document.getElementById("taskDescription").value = desc || "";
     document.getElementById("taskPriority").value = task.priority || "medium";
     document.getElementById("taskPoints").value = task.story_points ?? 1;
@@ -552,6 +694,9 @@ function openTaskModal(columnId, task = null) {
 
     modalChecklist = (checklist || []).map(c => ({ t: c.t, d: !!c.d }));
     renderModalChecklist();
+
+    modalComments = (comments || []).slice();
+    renderModalComments();
 
     tags.forEach(t => selectOrCreateTagChip(t));
 
@@ -570,6 +715,8 @@ function openTaskModal(columnId, task = null) {
     if (taskDueDate) taskDueDate.value = "";
     modalChecklist = [];
     renderModalChecklist();
+    modalComments = [];
+    renderModalComments();
     Array.from(assigneesSelect.options).forEach(opt => {
       opt.selected = false;
     });
@@ -653,7 +800,7 @@ taskForm.addEventListener("submit", async (e) => {
     .map(btn => btn.dataset.tag);
   const cleanDescription = document.getElementById("taskDescription").value.trim();
   const dueDateVal = taskDueDate ? taskDueDate.value : "";
-  const packedDescription = packTaskDescription(selectedTags, dueDateVal, modalChecklist, cleanDescription);
+  const packedDescription = packTaskDescription(selectedTags, dueDateVal, modalChecklist, modalComments, cleanDescription);
 
   const taskData = {
     name: document.getElementById("taskName").value.trim(),

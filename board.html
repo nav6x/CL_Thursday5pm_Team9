@@ -145,6 +145,19 @@
           <select id="taskAssignees" multiple size="4"></select>
           <span style="font-size:0.75rem; color:var(--ink-muted); margin-top:0.2rem;" id="assigneeHint">Assign one or more teammates to this task.</span>
         </div>
+        <div class="field" id="taskDiscussionSection">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Discussion & Comments</span>
+            <span id="commentCountBadge" style="font-size:0.75rem; color:var(--ink-muted); font-family:var(--font-mono);">0 comments</span>
+          </label>
+          <div class="comments-thread" id="commentsThreadContainer"></div>
+          <div class="comment-input-box">
+            <textarea id="newCommentInput" rows="2" placeholder="Write a comment or update…"></textarea>
+            <div style="display:flex; justify-content:flex-end; margin-top:0.4rem;">
+              <button type="button" class="btn-primary" id="addCommentBtn" style="font-size:0.8rem; padding:0.35rem 0.8rem; width:auto;">Post Comment</button>
+            </div>
+          </div>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn-danger" id="deleteTaskBtn" style="display:none; margin-right:auto;">Delete task</button>
           <button type="button" class="btn-ghost" id="cancelTaskBtn">Cancel</button>

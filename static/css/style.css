@@ -773,6 +773,20 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   border: 1px solid var(--border);
 }
 
+.task-comments-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--lane);
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
 .assignee-stack {
   display: flex;
   margin-top: 0.5rem;
@@ -993,6 +1007,129 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
 .modal-subtask-delete:hover {
   color: #DC2626;
   background: rgba(220, 38, 38, 0.1);
+}
+
+#taskDiscussionSection {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.comments-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+}
+
+.comment-item {
+  background: var(--lane);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+}
+
+.comment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.3rem;
+}
+
+.comment-author-info {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.comment-author-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.comment-author-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.comment-author-role {
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+}
+
+.comment-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.comment-time {
+  font-size: 0.7rem;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+}
+
+.comment-delete-btn {
+  background: transparent;
+  color: var(--ink-muted);
+  padding: 0 0.25rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.comment-delete-btn:hover {
+  color: #DC2626;
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.comment-body {
+  font-size: 0.82rem;
+  color: var(--ink);
+  line-height: 1.45;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.comment-empty {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  text-align: center;
+  padding: 0.75rem 0.5rem;
+  background: var(--lane);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.comment-input-box textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.82rem;
+  background: var(--surface);
+  color: var(--ink);
+  resize: vertical;
+  font-family: var(--font-body);
+}
+
+.comment-input-box textarea:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .settings-modal {
