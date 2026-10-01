@@ -1,23 +1,15 @@
-default:
-  image: python:3.11
-
-variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  SUPABASE_URL: "https://mock.supabase.co"
-  SUPABASE_ANON_KEY: "mock-anon-key"
-  SUPABASE_SERVICE_ROLE_KEY: "mock-service-role-key"
-
-cache:
-  paths:
-    - .cache/pip
+image: node:20
 
 stages:
   - test
+  - deploy
 
-test_job:
+test:
   stage: test
-  before_script:
-    - python -V
-    - pip install -r requirements.txt
   script:
-    - pytest
+    - npm test
+
+deploy:
+  stage: deploy
+  script:
+    - echo "Tests passed. Ready for deployment."
