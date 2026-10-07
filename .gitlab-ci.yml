@@ -1,4 +1,5 @@
-image: node:20
+default:
+  image: node:20
 
 stages:
   - test
@@ -6,6 +7,9 @@ stages:
 
 test:
   stage: test
+  before_script:
+    - node -v
+    - npm -v
   script:
     - npm test
 
