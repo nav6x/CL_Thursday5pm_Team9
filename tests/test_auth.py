@@ -3,7 +3,9 @@ from unittest.mock import MagicMock, patch
 
 from app import app as flask_app
 import routes.auth as auth
-
+import routes.tasks as tasks
+from flask import g
+from types import SimpleNamespace
 
 class TestSignup(unittest.TestCase):
 
@@ -179,6 +181,39 @@ class TestLogin(unittest.TestCase):
                 actual = data["user"]["email"]
                 self.assertTrue(expected == actual)
 
+class TestUpdateTaskMoveColumn(unittest.TestCase):
 
+    def test_developer_can_move_task_to_another_column(self):
+        """A developer should be able to move a task between columns
+        (e.g. 'In Progress' -> 'Done') even if they didn't create it
+        and aren't assigned to it — this is the 'move-only' exception."""
+        fake_task = {
+            "id": "task-1",
+            "project_id": "proj-1",
+            "column_id": "col-todo",
+            "created_by": "someone-else",
+        }
+        fake_updated_task = {**fake_task, "column_id": "col-done"}
+
+        mock_supabase = MagicMock()
+        mock_supabase.table.return_value.update.return_value.eq.return_value \
+            .execute.return_value.data = [fake_updated_task]
+
+        with patch.object(tasks, "_get_task_or_404", lambda task_id: fake_task), \
+                patch.object(tasks, "get_role_in_project", lambda user_id, project_id: "developer"), \
+                patch.object(tasks, "_is_assignee", lambda task_id, user_id: False), \
+                patch.object(tasks, "supabase", mock_supabase):
+
+            with flask_app.test_request_context(
+                "/api/projects/proj-1/tasks/task-1",
+                method="PATCH",
+                json={"column_id": "col-done"},
+            ):
+                g.user = SimpleNamespace(id="developer-user-id")
+                response, status_code = tasks.update_task.__wrapped__("proj-1", "task-1")
+
+                self.assertEqual(status_code, 200)
+                self.assertEqual(response.get_json()["column_id"], "col-done")
+                
 if __name__ == "__main__":
     unittest.main()
