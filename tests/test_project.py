@@ -82,3 +82,50 @@ class TestDeleteProject(unittest.TestCase):
                 expected = 403
                 actual = status_code
                 self.assertTrue(expected == actual)
+
+class TestUpdateProject(unittest.TestCase):
+ 
+    def test_rename_project_missing_name(self):
+        with patch.object(
+            auth_utils, "get_role_in_project",
+            lambda user_id, project_id: "leader",
+        ):
+            with flask_app.test_request_context(
+                "/api/projects/project-1",
+                method="PATCH",
+                json={"name": ""},
+            ):
+                g.user = SimpleNamespace(id="leader-1")
+                response, status_code = projects.update_project.__wrapped__("project-1")
+ 
+                expected = 400
+                actual = status_code
+                self.assertTrue(expected == actual)
+ 
+                expected = "Project name is required"
+                actual = response.get_json()["error"]
+                self.assertTrue(expected == actual)
+ 
+    def test_rename_project_not_found(self):
+        mock_supabase = MagicMock()
+        mock_supabase.table.return_value.update.return_value.eq.return_value \
+            .execute.return_value.data = []
+ 
+        with patch.object(
+            auth_utils, "get_role_in_project",
+            lambda user_id, project_id: "leader",
+        ), patch.object(projects, "supabase", mock_supabase):
+            with flask_app.test_request_context(
+                "/api/projects/does-not-exist",
+                method="PATCH",
+                json={"name": "New Name"},
+            ):
+                g.user = SimpleNamespace(id="leader-1")
+                response, status_code = projects.update_project.__wrapped__(
+                    "does-not-exist"
+                )
+ 
+                expected = 404
+                actual = status_code
+                self.assertTrue(expected == actual)
+ 
