@@ -167,6 +167,3 @@ class TestUpdateTaskDueDate(unittest.TestCase):
                     actual = data["description"]
                     self.assertTrue(expected == actual)
 
-
-if __name__ == "__main__":
-    unittest.main()
