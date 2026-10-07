@@ -117,3 +117,52 @@ class TestCreateColumn(unittest.TestCase):
                 self.assertTrue(expected == actual)
 
 
+class TestRenameColumn(unittest.TestCase):
+
+    def test_rename_column_nothing_to_update(self):
+        with patch.object(
+            auth_utils, "get_role_in_project",
+            lambda user_id, project_id: "leader",
+        ):
+            with flask_app.test_request_context(
+                "/api/projects/project-1/columns/col-1",
+                method="PATCH",
+                json={},
+            ):
+                g.user = SimpleNamespace(id="leader-1")
+                response, status_code = columns.rename_column.__wrapped__(
+                    "project-1", "col-1"
+                )
+
+                expected = 400
+                actual = status_code
+                self.assertTrue(expected == actual)
+
+                expected = "Nothing to update"
+                actual = response.get_json()["error"]
+                self.assertTrue(expected == actual)
+
+
+class TestDeleteColumn(unittest.TestCase):
+
+    def test_developer_cannot_delete_column(self):
+        with patch.object(
+            auth_utils, "get_role_in_project",
+            lambda user_id, project_id: "developer",
+        ):
+            with flask_app.test_request_context(
+                "/api/projects/project-1/columns/col-1",
+                method="DELETE",
+            ):
+                g.user = SimpleNamespace(id="user-1")
+                response, status_code = columns.delete_column.__wrapped__(
+                    "project-1", "col-1"
+                )
+
+                expected = 403
+                actual = status_code
+                self.assertTrue(expected == actual)
+
+
+if __name__ == "__main__":
+    unittest.main()
