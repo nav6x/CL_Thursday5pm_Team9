@@ -128,4 +128,83 @@ class TestUpdateProject(unittest.TestCase):
                 expected = 404
                 actual = status_code
                 self.assertTrue(expected == actual)
+
+
+class TestRemoveMember(unittest.TestCase):
+ 
+    def test_cannot_remove_self_as_leader(self):
+        """Protects against a project accidentally ending up with no Leader."""
+        with patch.object(
+            auth_utils, "get_role_in_project",
+            lambda user_id, project_id: "leader",
+        ):
+            with flask_app.test_request_context(
+                "/api/projects/project-1/members/leader-1",
+                method="DELETE",
+            ):
+                g.user = SimpleNamespace(id="leader-1")
+                response, status_code = projects.remove_member.__wrapped__(
+                    "project-1", "leader-1"
+                )
+ 
+                expected = 400
+                actual = status_code
+                self.assertTrue(expected == actual)
+ 
+                expected = "Cannot remove yourself as project leader"
+                actual = response.get_json()["error"]
+                self.assertTrue(expected == actual)
+ 
+ 
+class TestAddMember(unittest.TestCase):
+ 
+    def test_add_member_invalid_role(self):
+        with patch.object(
+            auth_utils, "get_role_in_project",
+            lambda user_id, project_id: "leader",
+        ):
+            with flask_app.test_request_context(
+                "/api/projects/project-1/members",
+                method="POST",
+                json={"email": "new@example.com", "role": "ceo"},
+            ):
+                g.user = SimpleNamespace(id="leader-1")
+                response, status_code = projects.add_member.__wrapped__("project-1")
+ 
+                expected = 400
+                actual = status_code
+                self.assertTrue(expected == actual)
+ 
+                expected = True
+                actual = "role must be one of" in response.get_json()["error"]
+                self.assertTrue(expected == actual)
+ 
+    def test_add_member_user_not_found(self):
+        mock_supabase = MagicMock()
+        mock_supabase.table.return_value.select.return_value.eq.return_value \
+            .maybe_single.return_value.execute.return_value.data = None
+ 
+        with patch.object(
+            auth_utils, "get_role_in_project",
+            lambda user_id, project_id: "leader",
+        ), patch.object(projects, "supabase", mock_supabase):
+            with flask_app.test_request_context(
+                "/api/projects/project-1/members",
+                method="POST",
+                json={"email": "nobody@example.com", "role": "developer"},
+            ):
+                g.user = SimpleNamespace(id="leader-1")
+                response, status_code = projects.add_member.__wrapped__("project-1")
+ 
+                expected = 404
+                actual = status_code
+                self.assertTrue(expected == actual)
+ 
+                expected = True
+                actual = "need to sign up first" in response.get_json()["error"]
+                self.assertTrue(expected == actual)
+ 
+ 
+if __name__ == "__main__":
+    unittest.main()
  
