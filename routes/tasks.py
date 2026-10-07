@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, g
-from config import supabase
+from config import supabase, maybe_one
 from auth_utils import login_required, get_role_in_project
 
 tasks_bp = Blueprint("tasks", __name__, url_prefix="/api/projects/<project_id>/tasks")
@@ -12,21 +12,17 @@ tasks_bp = Blueprint("tasks", __name__, url_prefix="/api/projects/<project_id>/t
 
 
 def _is_assignee(task_id, user_id):
-    result = (
+    result = maybe_one(
         supabase.table("task_assignees")
         .select("user_id")
         .eq("task_id", task_id)
         .eq("user_id", user_id)
-        .maybe_single()
-        .execute()
     )
-    return result.data is not None
+    return result is not None
 
 
 def _get_task_or_404(task_id):
-    result = supabase.table("tasks").select("*").eq("id", task_id).maybe_single().execute()
-    return result.data
-
+    return maybe_one(supabase.table("tasks").select("*").eq("id", task_id))
 
 @tasks_bp.route("", methods=["GET"])
 @login_required

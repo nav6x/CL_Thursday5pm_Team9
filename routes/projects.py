@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, g
-from config import supabase
+from config import supabase, maybe_one   
 from auth_utils import login_required, require_role
 
 projects_bp = Blueprint("projects", __name__, url_prefix="/api/projects")
@@ -41,7 +41,8 @@ def list_my_projects():
         .eq("user_id", g.user.id)
         .execute()
     )
-    my_profile = supabase.table("profiles").select("full_name").eq("id", g.user.id).maybe_single().execute().data or {}
+    # safe lookup — falls back to {} if the user has no profile row
+    my_profile = maybe_one(supabase.table("profiles").select("full_name").eq("id", g.user.id)) or {}
     _, my_agile_role = extract_agile_role(my_profile.get("full_name", ""), "developer")
 
     projects = [
@@ -77,8 +78,8 @@ def create_project():
     # — the client can still add/rename/delete freely afterward.
     default_columns = ["To Do", "In Progress", "Done"]
     supabase.table("columns").insert([
-        {"project_id": project["id"], "name": name, "position": i}
-        for i, name in enumerate(default_columns)
+        {"project_id": project["id"], "name": col_name, "position": i}
+        for i, col_name in enumerate(default_columns)   
     ]).execute()
 
     return jsonify(project), 201
@@ -123,26 +124,25 @@ def add_member(project_id):
 
     user_id = body.get("user_id")
     if user_id:
-        profile = supabase.table("profiles").select("id, full_name, email").eq("id", user_id).maybe_single().execute()
+        
+        profile = maybe_one(supabase.table("profiles").select("id, full_name, email").eq("id", user_id))
     else:
         email = body.get("email", "").strip().lower()
         if not email:
             return jsonify({"error": "email or user_id required"}), 400
-        profile = supabase.table("profiles").select("id, full_name, email").eq("email", email).maybe_single().execute()
+        profile = maybe_one(supabase.table("profiles").select("id, full_name, email").eq("email", email))
 
-    if not profile.data:
+    if not profile:  
         return jsonify({"error": "No user found with that email — they need to sign up first"}), 404
 
-    target_id = profile.data["id"]
-    existing = (
+    target_id = profile["id"]   
+    existing = maybe_one(      
         supabase.table("project_members")
         .select("id")
         .eq("project_id", project_id)
         .eq("user_id", target_id)
-        .maybe_single()
-        .execute()
     )
-    if existing.data:
+    if existing:   
         return jsonify({"message": "User is already a member of this project"}), 200
 
     supabase.table("project_members").insert({
@@ -151,7 +151,7 @@ def add_member(project_id):
         "role": db_role,
     }).execute()
 
-    current_name = profile.data.get("full_name", "")
+    current_name = profile.get("full_name") or ""   
     clean_name = current_name.split("[")[0].strip()
     new_name = f"{clean_name} [{display_role}]"
     supabase.table("profiles").update({"full_name": new_name}).eq("id", target_id).execute()
@@ -165,15 +165,13 @@ def add_member(project_id):
 def add_all_members(project_id):
     all_users = supabase.table("profiles").select("id").execute().data or []
     for u in all_users:
-        existing = (
+        existing = maybe_one(   
             supabase.table("project_members")
             .select("id")
             .eq("project_id", project_id)
             .eq("user_id", u["id"])
-            .maybe_single()
-            .execute()
         )
-        if not existing.data:
+        if not existing:  
             supabase.table("project_members").insert({
                 "project_id": project_id,
                 "user_id": u["id"],
@@ -228,9 +226,10 @@ def update_member(project_id, user_id):
     if not result.data:
         return jsonify({"error": "Member not found"}), 404
 
-    target_profile = supabase.table("profiles").select("full_name").eq("id", user_id).maybe_single().execute().data
+    # safe lookup
+    target_profile = maybe_one(supabase.table("profiles").select("full_name").eq("id", user_id))
     if target_profile:
-        current_name = target_profile.get("full_name", "")
+        current_name = target_profile.get("full_name") or ""
         clean_name = current_name.split("[")[0].strip()
         new_name = f"{clean_name} [{display_role}]"
         supabase.table("profiles").update({"full_name": new_name}).eq("id", user_id).execute()

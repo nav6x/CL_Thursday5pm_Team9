@@ -17,3 +17,13 @@ SUPABASE_ANON_KEY = os.environ["SUPABASE_ANON_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 supabase_auth: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+def maybe_one(query):
+    """Run a .maybe_single() query safely.
+
+    In supabase-py 2.x, .maybe_single().execute() returns None (not a
+    response object) when no row matches, so reading `.data` on it
+    crashes. This returns the row as a dict, or None if there isn't one.
+    """
+    result = query.maybe_single().execute()
+    return result.data if result is not None else None

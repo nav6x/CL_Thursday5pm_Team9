@@ -1,6 +1,6 @@
 from functools import wraps
 from flask import request, jsonify, g
-from config import supabase, supabase_auth
+from config import supabase, supabase_auth, maybe_one
 
 
 def login_required(f):
@@ -28,15 +28,13 @@ def login_required(f):
 def get_role_in_project(user_id, project_id):
     """Looks up the caller's role for a specific project. Returns
     None if they aren't a member at all (treated as no access)."""
-    result = (
+    result = maybe_one(
         supabase.table("project_members")
         .select("role")
         .eq("user_id", user_id)
         .eq("project_id", project_id)
-        .maybe_single()
-        .execute()
     )
-    return result.data["role"] if result.data else None
+    return result["role"] if result else None
 
 
 def require_role(*allowed_roles):
