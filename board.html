@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scrumptious — Agile Board</title>
+  <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24"><path d="M4 6h4v12H4V6zm6 4h4v8h-4v-8zm6 4h4v4h-4v-4z"/></svg>
+      </div>
+      <span class="brand-name">Scrumptious</span>
+    </div>
+
+    <div class="topbar-project">
+      <h1 id="projectName">Loading…<span class="role-badge" id="roleBadge"></span></h1>
+      <select id="projectSelect" class="project-select" style="display:none;"></select>
+      <button class="btn-secondary" id="newProjectBtn">+ New Project</button>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="btn-primary" id="topAddTaskBtn" style="width:auto; padding:0.45rem 0.95rem; font-size:0.85rem;">+ New Task</button>
+      <button class="icon-btn" id="settingsBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        <span>Settings</span>
+      </button>
+      <div class="topbar-user">
+        <span id="userName"></span>
+        <button class="btn-ghost" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-group">
+      <input type="text" id="searchInput" class="filter-input" placeholder="Search tasks…">
+    </div>
+    <div class="filter-group">
+      <span style="font-size:0.75rem; font-weight:600; color:var(--ink-muted);">Tag:</span>
+      <button class="filter-pill active" data-filter-tag="all">All</button>
+      <button class="filter-pill" data-filter-tag="Frontend">Frontend</button>
+      <button class="filter-pill" data-filter-tag="Backend">Backend</button>
+      <button class="filter-pill" data-filter-tag="Bug">Bug</button>
+      <button class="filter-pill" data-filter-tag="Feature">Feature</button>
+      <button class="filter-pill" data-filter-tag="DevOps">DevOps</button>
+      <button class="filter-pill" data-filter-tag="Design">Design</button>
+    </div>
+    <div class="filter-group">
+      <span style="font-size:0.75rem; font-weight:600; color:var(--ink-muted);">Priority:</span>
+      <button class="filter-pill active" data-filter-priority="all">All</button>
+      <button class="filter-pill" data-filter-priority="high">High</button>
+      <button class="filter-pill" data-filter-priority="medium">Medium</button>
+      <button class="filter-pill" data-filter-priority="low">Low</button>
+    </div>
+  </div>
+
+  <div class="sprint-summary-bar" id="sprintSummaryBar">
+    <div class="sprint-metric">
+      <span class="sprint-metric-value" id="metricTasksCount">0</span>
+      <span class="sprint-metric-label">Total Tasks</span>
+    </div>
+    <div class="sprint-metric">
+      <span class="sprint-metric-value" id="metricPointsCount">0 pts</span>
+      <span class="sprint-metric-label">Story Points</span>
+    </div>
+    <div class="sprint-metric">
+      <span class="sprint-metric-value" id="metricUrgentCount">0</span>
+      <span class="sprint-metric-label">High Priority</span>
+    </div>
+    <div class="sprint-progress-wrapper">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="sprint-metric-label">Sprint Progress</span>
+        <span class="sprint-progress-text" id="metricProgressPercent">0%</span>
+      </div>
+      <div class="sprint-progress-bar">
+        <div class="sprint-progress-fill" id="metricProgressFill" style="width: 0%;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="board" id="board"></div>
+
+  <div class="modal-overlay" id="taskModalOverlay">
+    <div class="modal">
+      <h2 id="modalTitle">New task</h2>
+      <form id="taskForm">
+        <div class="field">
+          <label for="taskName">Name</label>
+          <input type="text" id="taskName" placeholder="e.g. Implement authentication token refresh" required>
+        </div>
+        <div class="field">
+          <label>Labels / Tags</label>
+          <div class="tag-selector-wrapper">
+            <div class="tag-selector-chips" id="tagChipsContainer">
+              <button type="button" class="tag-option-btn" data-tag="Frontend">Frontend</button>
+              <button type="button" class="tag-option-btn" data-tag="Backend">Backend</button>
+              <button type="button" class="tag-option-btn" data-tag="Bug">Bug</button>
+              <button type="button" class="tag-option-btn" data-tag="Feature">Feature</button>
+              <button type="button" class="tag-option-btn" data-tag="DevOps">DevOps</button>
+              <button type="button" class="tag-option-btn" data-tag="Design">Design</button>
+            </div>
+            <div style="display:flex; gap:0.4rem; margin-top:0.3rem;">
+              <input type="text" id="customTagInput" placeholder="Add custom tag…" style="font-size:0.8rem; padding:0.35rem 0.6rem; flex:1;">
+              <button type="button" class="btn-secondary" id="addCustomTagBtn" style="font-size:0.8rem; padding:0.35rem 0.65rem;">+ Add Tag</button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="taskDescription">Description</label>
+          <textarea id="taskDescription" rows="3" placeholder="Task requirements and acceptance criteria"></textarea>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="taskPriority">Priority</label>
+            <select id="taskPriority">
+              <option value="high">High</option>
+              <option value="medium" selected>Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="taskPoints">Story points</label>
+            <input type="number" id="taskPoints" min="0" max="10" value="1">
+          </div>
+          <div class="field">
+            <label for="taskDueDate">Due Date</label>
+            <input type="date" id="taskDueDate">
+          </div>
+        </div>
+        <div class="field">
+          <label>Subtasks / Checklist</label>
+          <div class="checklist-builder">
+            <div class="checklist-items-list" id="modalChecklistContainer"></div>
+            <div style="display:flex; gap:0.4rem; margin-top:0.4rem;">
+              <input type="text" id="newSubtaskInput" placeholder="Add a subtask item…" style="font-size:0.8rem; padding:0.35rem 0.6rem; flex:1;">
+              <button type="button" class="btn-secondary" id="addSubtaskBtn" style="font-size:0.8rem; padding:0.35rem 0.65rem;">+ Add Subtask</button>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="taskAssignees">Assignees (Hold Ctrl or Cmd to select multiple)</label>
+          <select id="taskAssignees" multiple size="4"></select>
+          <span style="font-size:0.75rem; color:var(--ink-muted); margin-top:0.2rem;" id="assigneeHint">Assign one or more teammates to this task.</span>
+        </div>
+        <div class="field" id="taskDiscussionSection">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Discussion & Comments</span>
+            <span id="commentCountBadge" style="font-size:0.75rem; color:var(--ink-muted); font-family:var(--font-mono);">0 comments</span>
+          </label>
+          <div class="comments-thread" id="commentsThreadContainer"></div>
+          <div class="comment-input-box">
+            <textarea id="newCommentInput" rows="2" placeholder="Write a comment or update…"></textarea>
+            <div style="display:flex; justify-content:flex-end; margin-top:0.4rem;">
+              <button type="button" class="btn-primary" id="addCommentBtn" style="font-size:0.8rem; padding:0.35rem 0.8rem; width:auto;">Post Comment</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-danger" id="deleteTaskBtn" style="display:none; margin-right:auto;">Delete task</button>
+          <button type="button" class="btn-ghost" id="cancelTaskBtn">Cancel</button>
+          <button type="submit" class="btn-primary" style="width:auto; padding-left:1.2rem; padding-right:1.2rem;">Save task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="projectModalOverlay">
+    <div class="modal">
+      <h2>New Project</h2>
+      <form id="projectForm">
+        <div class="field">
+          <label for="newProjectName">Project Name</label>
+          <input type="text" id="newProjectName" placeholder="e.g. Sprint 2 Planning" required>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="cancelProjectBtn">Cancel</button>
+          <button type="submit" class="btn-primary" style="width:auto; padding-left:1.2rem; padding-right:1.2rem;">Create project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="settingsModalOverlay">
+    <div class="modal settings-modal">
+      <h2>Project Settings</h2>
+      <div class="settings-tabs">
+        <button type="button" class="settings-tab-btn active" data-tab="general">General</button>
+        <button type="button" class="settings-tab-btn" data-tab="team">Team & Roles</button>
+        <button type="button" class="settings-tab-btn" data-tab="appearance">Appearance</button>
+      </div>
+
+      <div class="settings-panel active" id="tabGeneral">
+        <form id="renameProjectForm">
+          <div class="field">
+            <label for="renameProjectInput">Project Name</label>
+            <input type="text" id="renameProjectInput" required>
+          </div>
+          <div style="display:flex; justify-content:flex-end;">
+            <button type="submit" class="btn-primary" id="saveProjectNameBtn" style="width:auto;">Save Name</button>
+          </div>
+        </form>
+
+        <div class="danger-box" id="projectDangerZone">
+          <h4>Danger Zone</h4>
+          <p>Deleting this project permanently removes all columns and tasks.</p>
+          <button type="button" class="btn-danger" id="deleteProjectBtn">Delete Project</button>
+        </div>
+      </div>
+
+      <div class="settings-panel" id="tabTeam">
+        <div id="addMemberSection">
+          <form id="addMemberForm">
+            <div class="field-row">
+              <div class="field" style="flex:2;">
+                <label for="newMemberEmail">Invite Member by Email</label>
+                <input type="email" id="newMemberEmail" placeholder="colleague@example.com" required>
+              </div>
+              <div class="field" style="flex:1;">
+                <label for="newMemberRole">Role</label>
+                <select id="newMemberRole">
+                  <option value="developer" selected>Developer</option>
+                  <option value="scrum_master">Scrum Master</option>
+                  <option value="product_owner">Product Owner</option>
+                  <option value="qa_engineer">QA Engineer</option>
+                  <option value="project_leader">Project Leader</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; margin-bottom:1rem;">
+              <button type="submit" class="btn-primary" style="width:auto;">Invite Member</button>
+            </div>
+          </form>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem;">
+          <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted);">Project Members</label>
+          <button type="button" class="btn-secondary" id="addAllMembersBtn" style="font-size:0.75rem; padding:0.25rem 0.6rem;">+ Add All Workspace Users</button>
+        </div>
+        <div class="member-list" id="memberListContainer">
+          <div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">Loading members…</div>
+        </div>
+
+        <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted); margin-top:1rem; display:block;">Workspace Directory</label>
+        <div class="member-list" id="workspaceUsersContainer">
+          <div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">Loading workspace users…</div>
+        </div>
+      </div>
+
+      <div class="settings-panel" id="tabAppearance">
+        <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted);">Theme Palette</label>
+        <div class="theme-grid">
+          <div class="theme-card theme-slate active" data-set-theme="slate">
+            <div class="theme-preview-box"></div>
+            Slate Cockpit
+          </div>
+          <div class="theme-card theme-dark" data-set-theme="dark">
+            <div class="theme-preview-box"></div>
+            Dark Terminal
+          </div>
+          <div class="theme-card theme-corkboard" data-set-theme="corkboard">
+            <div class="theme-preview-box"></div>
+            Warm Corkboard
+          </div>
+        </div>
+
+        <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted);">Brand Accent Color</label>
+        <div class="accent-swatches">
+          <div class="accent-swatch active" data-set-accent="indigo" style="background:#6C5CE7;" title="Periwinkle Indigo"></div>
+          <div class="accent-swatch" data-set-accent="cyan" style="background:#0284C7;" title="Electric Cyan"></div>
+          <div class="accent-swatch" data-set-accent="emerald" style="background:#059669;" title="Emerald Green"></div>
+          <div class="accent-swatch" data-set-accent="amber" style="background:#D97706;" title="Amber Gold"></div>
+          <div class="accent-swatch" data-set-accent="rose" style="background:#E11D48;" title="Rose Red"></div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="closeSettingsBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="static/js/api.js"></script>
+  <script src="static/js/toast.js"></script>
+  <script src="static/js/board.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+image: node:20
+
+stages:
+  - test
+  - deploy
+
+test:
+  stage: test
+  script:
+    - npm test
+
+deploy:
+  stage: deploy
+  script:
+    - echo "Tests passed. Ready for deployment."

@@ -1,0 +1,1247 @@
+if (!getToken()) window.location.href = "index.html";
+
+const user = getUser();
+const userNameEl = document.getElementById("userName");
+if (userNameEl) userNameEl.textContent = user?.email || "";
+
+const logoutBtn = document.getElementById("logoutBtn");
+if (logoutBtn) {
+  logoutBtn.addEventListener("click", () => {
+    clearSession();
+    window.location.href = "index.html";
+  });
+}
+
+const savedTheme = localStorage.getItem("scrumptious_theme") || "slate";
+const savedAccent = localStorage.getItem("scrumptious_accent") || "indigo";
+document.documentElement.setAttribute("data-theme", savedTheme);
+document.documentElement.setAttribute("data-accent", savedAccent);
+
+let currentProject = null;
+let currentRole = null;
+let currentAgileRole = "Developer";
+let projectMembers = [];
+let activeColumnIdForNewTask = null;
+let editingTaskId = null;
+let cachedTasks = [];
+let cachedColumns = [];
+
+let activeFilterTag = "all";
+let activeFilterPriority = "all";
+let searchFilterText = "";
+
+const boardEl = document.getElementById("board");
+const modalOverlay = document.getElementById("taskModalOverlay");
+const taskForm = document.getElementById("taskForm");
+const assigneesSelect = document.getElementById("taskAssignees");
+const projectSelect = document.getElementById("projectSelect");
+const newProjectBtn = document.getElementById("newProjectBtn");
+const topAddTaskBtn = document.getElementById("topAddTaskBtn");
+const deleteTaskBtn = document.getElementById("deleteTaskBtn");
+const cancelTaskBtn = document.getElementById("cancelTaskBtn");
+
+const projectModalOverlay = document.getElementById("projectModalOverlay");
+const projectForm = document.getElementById("projectForm");
+const cancelProjectBtn = document.getElementById("cancelProjectBtn");
+
+const settingsModalOverlay = document.getElementById("settingsModalOverlay");
+const settingsBtn = document.getElementById("settingsBtn");
+const closeSettingsBtn = document.getElementById("closeSettingsBtn");
+const renameProjectForm = document.getElementById("renameProjectForm");
+const renameProjectInput = document.getElementById("renameProjectInput");
+const deleteProjectBtn = document.getElementById("deleteProjectBtn");
+const projectDangerZone = document.getElementById("projectDangerZone");
+const addMemberSection = document.getElementById("addMemberSection");
+const addMemberForm = document.getElementById("addMemberForm");
+const memberListContainer = document.getElementById("memberListContainer");
+const workspaceUsersContainer = document.getElementById("workspaceUsersContainer");
+const addAllMembersBtn = document.getElementById("addAllMembersBtn");
+
+const tagChipsContainer = document.getElementById("tagChipsContainer");
+const customTagInput = document.getElementById("customTagInput");
+const addCustomTagBtn = document.getElementById("addCustomTagBtn");
+
+const taskDueDate = document.getElementById("taskDueDate");
+const modalChecklistContainer = document.getElementById("modalChecklistContainer");
+const newSubtaskInput = document.getElementById("newSubtaskInput");
+const addSubtaskBtn = document.getElementById("addSubtaskBtn");
+
+const commentsThreadContainer = document.getElementById("commentsThreadContainer");
+const commentCountBadge = document.getElementById("commentCountBadge");
+const newCommentInput = document.getElementById("newCommentInput");
+const addCommentBtn = document.getElementById("addCommentBtn");
+
+const metricTasksCount = document.getElementById("metricTasksCount");
+const metricPointsCount = document.getElementById("metricPointsCount");
+const metricUrgentCount = document.getElementById("metricUrgentCount");
+const metricProgressPercent = document.getElementById("metricProgressPercent");
+const metricProgressFill = document.getElementById("metricProgressFill");
+
+let modalChecklist = [];
+let modalComments = [];
+
+const searchInput = document.getElementById("searchInput");
+
+init();
+
+function getRoleBadgeClass(roleTitle) {
+  const lower = (roleTitle || "").toLowerCase().replace(/[\s_]+/g, "-");
+  if (lower.includes("scrum")) return "scrum-master";
+  if (lower.includes("leader")) return "project-leader";
+  if (lower.includes("product") || lower.includes("owner")) return "product-owner";
+  if (lower.includes("qa") || lower.includes("test")) return "qa-engineer";
+  return "developer";
+}
+
+function showLoadingSkeleton() {
+  boardEl.innerHTML = `
+    <div class="board-loading">
+      <div class="skeleton-column"></div>
+      <div class="skeleton-column"></div>
+      <div class="skeleton-column"></div>
+    </div>`;
+}
+
+async function init(preferredProjectId = null) {
+  showLoadingSkeleton();
+  try {
+    let projects = await api("/projects");
+
+    if (!projects || projects.length === 0) {
+      const created = await api("/projects", {
+        method: "POST",
+        body: { name: "Sprint 1 Workspace" },
+      });
+      projects = [created];
+    }
+
+    currentProject = preferredProjectId
+      ? projects.find(p => p.id === preferredProjectId) || projects[0]
+      : projects[0];
+    currentRole = currentProject.my_role;
+    currentAgileRole = currentProject.my_agile_role || (currentRole === "leader" ? "Project Leader" : "Developer");
+
+    const badgeClass = getRoleBadgeClass(currentAgileRole);
+    document.getElementById("projectName").innerHTML =
+      `${escapeHtml(currentProject.name)} <span class="role-badge ${badgeClass}" id="roleBadge">${escapeHtml(currentAgileRole)}</span>`;
+
+    if (projectSelect) {
+      if (projects.length > 1) {
+        projectSelect.style.display = "inline-block";
+        projectSelect.innerHTML = projects
+          .map(p => `<option value="${p.id}" ${p.id === currentProject.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`)
+          .join("");
+      } else {
+        projectSelect.style.display = "none";
+      }
+    }
+
+    const isLeaderLevel = currentRole === "leader";
+    const isProjectOwner = currentRole === "leader" && (currentAgileRole === "Project Leader" || currentProject.created_by === user?.id);
+
+    if (projectDangerZone) {
+      projectDangerZone.style.display = isProjectOwner ? "block" : "none";
+    }
+    if (addMemberSection) {
+      addMemberSection.style.display = isLeaderLevel ? "block" : "none";
+    }
+    if (addAllMembersBtn) {
+      addAllMembersBtn.style.display = isLeaderLevel ? "inline-block" : "none";
+    }
+
+    const [membersData, columnsData] = await Promise.all([
+      api(`/projects/${currentProject.id}/members`),
+      api(`/projects/${currentProject.id}/columns`),
+    ]);
+
+    projectMembers = membersData || [];
+    populateAssigneeOptions();
+
+    let tasks = await api(`/projects/${currentProject.id}/tasks`);
+    if (tasks.length === 0 && columnsData.length > 0) {
+      const targetColumn = columnsData.find(c => c.name === "To Do") || columnsData[0];
+      await api(`/projects/${currentProject.id}/tasks`, {
+        method: "POST",
+        body: {
+          column_id: targetColumn.id,
+          name: "Welcome to Scrumptious",
+          description: "[tags:Frontend,Feature] Manage sprints, organize tickets, and collaborate in real-time.",
+          priority: "medium",
+          story_points: 3,
+        },
+      });
+      tasks = await api(`/projects/${currentProject.id}/tasks`);
+    }
+
+    cachedColumns = columnsData;
+    cachedTasks = tasks;
+
+    await renderBoard();
+  } catch (err) {
+    boardEl.innerHTML = `
+      <div class="board-empty">
+        <h2>Unable to load workspace</h2>
+        <p>${escapeHtml(err.message)}</p>
+      </div>`;
+  }
+}
+
+function parseTaskDescription(rawDesc) {
+  if (!rawDesc) return { tags: [], due: "", checklist: [], comments: [], desc: "" };
+  const metaMatch = rawDesc.match(/^\[meta:(\{[\s\S]*?\})\]---([\s\S]*)$/);
+  if (metaMatch) {
+    try {
+      const meta = JSON.parse(metaMatch[1]);
+      return {
+        tags: Array.isArray(meta.tags) ? meta.tags : [],
+        due: meta.due || "",
+        checklist: Array.isArray(meta.checklist) ? meta.checklist : [],
+        comments: Array.isArray(meta.comments) ? meta.comments : [],
+        desc: (metaMatch[2] || "").trim()
+      };
+    } catch (e) {}
+  }
+  const tagMatch = rawDesc.match(/^\[tags:([^\]]*)\]\s*([\s\S]*)$/);
+  if (tagMatch) {
+    const tags = tagMatch[1].split(",").map(t => t.trim()).filter(Boolean);
+    return { tags, due: "", checklist: [], comments: [], desc: tagMatch[2].trim() };
+  }
+  return { tags: [], due: "", checklist: [], comments: [], desc: rawDesc.trim() };
+}
+
+function packTaskDescription(tags, due, checklist, comments, cleanDesc) {
+  const meta = {};
+  if (tags && tags.length > 0) meta.tags = tags;
+  if (due) meta.due = due;
+  if (checklist && checklist.length > 0) meta.checklist = checklist;
+  if (comments && comments.length > 0) meta.comments = comments;
+
+  if (Object.keys(meta).length === 0) return cleanDesc;
+  return `[meta:${JSON.stringify(meta)}]---${cleanDesc}`;
+}
+
+function updateSprintSummary() {
+  if (!metricTasksCount) return;
+  const totalTasks = cachedTasks.length;
+  const totalPoints = cachedTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+  const urgentTasks = cachedTasks.filter(t => t.priority === "high").length;
+
+  const doneColIds = cachedColumns
+    .filter(c => (c.name || "").toLowerCase().includes("done") || (c.name || "").toLowerCase().includes("complete"))
+    .map(c => c.id);
+
+  const doneTasks = cachedTasks.filter(t => doneColIds.includes(t.column_id)).length;
+  const percent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+  metricTasksCount.textContent = totalTasks;
+  metricPointsCount.textContent = `${totalPoints} pts`;
+  metricUrgentCount.textContent = urgentTasks;
+  metricProgressPercent.textContent = `${percent}%`;
+  metricProgressFill.style.width = `${percent}%`;
+}
+
+async function renderBoard() {
+  const [columns, tasks] = await Promise.all([
+    api(`/projects/${currentProject.id}/columns`),
+    api(`/projects/${currentProject.id}/tasks`),
+  ]);
+
+  cachedColumns = columns;
+  cachedTasks = tasks;
+
+  boardEl.innerHTML = "";
+
+  columns.forEach(column => {
+    const columnTasks = tasks.filter(t => t.column_id === column.id);
+    boardEl.appendChild(renderColumn(column, columnTasks));
+  });
+
+  if (currentRole === "leader") {
+    const addColBtn = document.createElement("button");
+    addColBtn.className = "add-column";
+    addColBtn.textContent = "+ Add Column";
+    addColBtn.addEventListener("click", handleAddColumn);
+    boardEl.appendChild(addColBtn);
+  }
+
+  updateSprintSummary();
+  applyFilters();
+}
+
+function renderColumn(column, tasks) {
+  const el = document.createElement("div");
+  el.className = "column";
+  el.dataset.columnId = column.id;
+
+  const totalPoints = tasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+
+  el.innerHTML = `
+    <div class="column-header">
+      <div class="column-header-title">
+        <h2>${escapeHtml(column.name)}</h2>
+        <span class="column-count">${tasks.length}</span>
+      </div>
+      <span class="column-pts">${totalPoints} pts</span>
+    </div>
+    <div class="task-list"></div>
+  `;
+
+  const list = el.querySelector(".task-list");
+  if (tasks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-column";
+    empty.textContent = "No tasks yet in this column";
+    list.appendChild(empty);
+  } else {
+    tasks.forEach(task => list.appendChild(renderTaskCard(task)));
+  }
+
+  const addTaskBtn = document.createElement("button");
+  addTaskBtn.className = "add-task-btn";
+  addTaskBtn.textContent = "+ Add a task";
+  addTaskBtn.addEventListener("click", () => openTaskModal(column.id));
+  el.appendChild(addTaskBtn);
+
+  el.addEventListener("dragover", (e) => e.preventDefault());
+  el.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("text/task-id");
+    if (!taskId) return;
+    try {
+      await api(`/projects/${currentProject.id}/tasks/${taskId}`, {
+        method: "PATCH",
+        body: { column_id: column.id },
+      });
+      renderBoard();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  return el;
+}
+
+function getTagClass(tag) {
+  const lower = (tag || "").toLowerCase();
+  if (["frontend", "backend", "bug", "feature", "devops", "design", "indigo", "cyan", "emerald", "amber", "rose", "purple", "slate"].includes(lower)) {
+    return lower;
+  }
+  const colors = ["indigo", "cyan", "emerald", "amber", "rose", "purple"];
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function formatDueDateBadge(dueStr, isDoneColumn) {
+  if (!dueStr) return "";
+  const parts = dueStr.split("-");
+  if (parts.length !== 3) return "";
+  const dueDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dueDate.setHours(0, 0, 0, 0);
+
+  const diffTime = dueDate.getTime() - today.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const formattedDate = `${monthNames[dueDate.getMonth()]} ${dueDate.getDate()}`;
+
+  if (isDoneColumn) {
+    return `<span class="due-badge done" title="Completed">✓ ${formattedDate}</span>`;
+  }
+  if (diffDays < 0) {
+    return `<span class="due-badge overdue" title="Overdue by ${Math.abs(diffDays)} day(s)">⚠ ${formattedDate}</span>`;
+  }
+  if (diffDays === 0) {
+    return `<span class="due-badge today" title="Due today">⏰ Today</span>`;
+  }
+  if (diffDays === 1) {
+    return `<span class="due-badge upcoming" title="Due tomorrow">⏰ Tomorrow</span>`;
+  }
+  return `<span class="due-badge upcoming" title="Due ${formattedDate}">📅 ${formattedDate}</span>`;
+}
+
+function renderCardChecklistHtml(checklist) {
+  if (!checklist || checklist.length === 0) return "";
+  const doneCount = checklist.filter(c => c.d).length;
+  const totalCount = checklist.length;
+  const percent = Math.round((doneCount / totalCount) * 100);
+
+  const itemsHtml = checklist.map((item, idx) => `
+    <label class="card-subtask-item ${item.d ? 'checked' : ''}">
+      <input type="checkbox" ${item.d ? 'checked' : ''} data-subtask-idx="${idx}">
+      <span>${escapeHtml(item.t)}</span>
+    </label>
+  `).join("");
+
+  return `
+    <div class="card-checklist">
+      <div class="checklist-progress-header">
+        <span>Subtasks</span>
+        <span>${doneCount}/${totalCount} (${percent}%)</span>
+      </div>
+      <div class="checklist-progress-track">
+        <div class="checklist-progress-fill" style="width: ${percent}%;"></div>
+      </div>
+      <div class="card-subtask-list">
+        ${itemsHtml}
+      </div>
+    </div>
+  `;
+}
+
+function renderTaskCard(task) {
+  const card = document.createElement("div");
+  card.className = `task-card priority-${task.priority || "medium"}`;
+  card.dataset.taskId = task.id;
+  card.dataset.priority = task.priority || "medium";
+  card.draggable = true;
+
+  const { tags, due, checklist, comments, desc } = parseTaskDescription(task.description);
+  card.dataset.tags = tags.join(",").toLowerCase();
+  card.dataset.name = (task.name || "").toLowerCase();
+  card.dataset.desc = desc.toLowerCase();
+
+  card.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData("text/task-id", task.id);
+  });
+
+  card.addEventListener("click", (e) => {
+    if (!e.target.closest(".avatar") && !e.target.closest(".card-subtask-item") && !e.target.closest(".tag-chip")) {
+      openTaskModal(task.column_id, task);
+    }
+  });
+
+  const initials = (name) => {
+    if (!name) return "";
+    return name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
+  };
+
+  const tagChipsHtml = tags.length > 0
+    ? `<div class="task-tags">${tags.map(t => `<span class="tag-chip ${getTagClass(t)}" data-tag="${escapeHtml(t)}">${escapeHtml(t)}</span>`).join("")}</div>`
+    : "";
+
+  const col = cachedColumns.find(c => c.id === task.column_id);
+  const isDoneColumn = col && ((col.name || "").toLowerCase().includes("done") || (col.name || "").toLowerCase().includes("complete"));
+  const dueBadgeHtml = formatDueDateBadge(due, isDoneColumn);
+  const checklistHtml = renderCardChecklistHtml(checklist);
+  const commentCountBadgeHtml = (comments && comments.length > 0)
+    ? `<span class="task-comments-badge">💬 ${comments.length}</span>`
+    : "";
+
+  const validAssignees = (task.assignees || []).filter(Boolean);
+
+  card.innerHTML = `
+    <h3>${escapeHtml(task.name)}</h3>
+    ${tagChipsHtml}
+    ${desc ? `<p class="desc">${escapeHtml(desc)}</p>` : ""}
+    ${dueBadgeHtml}
+    ${checklistHtml}
+    <div class="task-meta">
+      <span class="priority-badge ${task.priority}">${escapeHtml(task.priority)}</span>
+      <div style="display:flex; align-items:center; gap:0.35rem;">
+        ${commentCountBadgeHtml}
+        <span class="story-points">${task.story_points ?? 0} pts</span>
+      </div>
+    </div>
+    <div class="assignee-stack">
+      ${validAssignees.map(a => `<span class="avatar" title="${escapeHtml(a.full_name || a.email || '')}">${initials(a.full_name || a.email || 'U')}</span>`).join("")}
+    </div>
+  `;
+
+  card.querySelectorAll(".tag-chip").forEach(chip => {
+    chip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const clickedTag = chip.dataset.tag;
+      if (!clickedTag) return;
+      activeFilterTag = (activeFilterTag.toLowerCase() === clickedTag.toLowerCase()) ? "all" : clickedTag;
+      document.querySelectorAll("[data-filter-tag]").forEach(b => {
+        b.classList.toggle("active", b.dataset.filterTag.toLowerCase() === activeFilterTag.toLowerCase());
+      });
+      applyFilters();
+    });
+  });
+
+  card.querySelectorAll('.card-subtask-item input[type="checkbox"]').forEach(chk => {
+    chk.addEventListener("change", async (e) => {
+      e.stopPropagation();
+      const idx = parseInt(chk.dataset.subtaskIdx, 10);
+      const targetTask = cachedTasks.find(t => t.id === task.id);
+      if (!targetTask) return;
+      const meta = parseTaskDescription(targetTask.description);
+      if (meta.checklist && meta.checklist[idx] !== undefined) {
+        meta.checklist[idx].d = chk.checked;
+        const newPacked = packTaskDescription(meta.tags, meta.due, meta.checklist, meta.comments, meta.desc);
+        try {
+          await api(`/projects/${currentProject.id}/tasks/${task.id}`, {
+            method: "PATCH",
+            body: { description: newPacked },
+          });
+          targetTask.description = newPacked;
+          renderBoard();
+        } catch (err) {
+          showToast(err.message, "error");
+          chk.checked = !chk.checked;
+        }
+      }
+    });
+  });
+
+  return card;
+}
+
+function populateAssigneeOptions() {
+  if (!assigneesSelect) return;
+  assigneesSelect.innerHTML = projectMembers
+    .filter(m => m && m.profiles)
+    .map(m => {
+      const p = m.profiles;
+      const roleName = m.agile_role || (m.role === "leader" ? "Project Leader" : "Developer");
+      const label = `${p.full_name || p.email} (${roleName})`;
+      return `<option value="${p.id}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+}
+
+function renderModalChecklist() {
+  if (!modalChecklistContainer) return;
+  modalChecklistContainer.innerHTML = "";
+  modalChecklist.forEach((item, idx) => {
+    const row = document.createElement("div");
+    row.className = "modal-subtask-item";
+    row.innerHTML = `
+      <label class="modal-subtask-item-label">
+        <input type="checkbox" ${item.d ? "checked" : ""}>
+        <span style="${item.d ? 'text-decoration:line-through; color:var(--ink-muted);' : ''}">${escapeHtml(item.t)}</span>
+      </label>
+      <button type="button" class="modal-subtask-delete" title="Remove subtask">×</button>
+    `;
+    row.querySelector('input[type="checkbox"]').addEventListener("change", (e) => {
+      item.d = e.target.checked;
+      renderModalChecklist();
+    });
+    row.querySelector(".modal-subtask-delete").addEventListener("click", () => {
+      modalChecklist.splice(idx, 1);
+      renderModalChecklist();
+    });
+    modalChecklistContainer.appendChild(row);
+  });
+}
+
+if (addSubtaskBtn && newSubtaskInput) {
+  const addSubtask = () => {
+    const val = newSubtaskInput.value.trim();
+    if (!val) return;
+    modalChecklist.push({ t: val, d: false });
+    newSubtaskInput.value = "";
+    renderModalChecklist();
+  };
+  addSubtaskBtn.addEventListener("click", addSubtask);
+  newSubtaskInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addSubtask();
+    }
+  });
+}
+
+function formatCommentTime(isoStr) {
+  if (!isoStr) return "";
+  try {
+    const date = new Date(isoStr);
+    const now = new Date();
+    const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (diffSec < 60) return "just now";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${months[date.getMonth()]} ${date.getDate()}`;
+  } catch (e) {
+    return "";
+  }
+}
+
+function renderModalComments() {
+  if (!commentsThreadContainer || !commentCountBadge) return;
+  commentCountBadge.textContent = `${modalComments.length} comment${modalComments.length === 1 ? "" : "s"}`;
+  commentsThreadContainer.innerHTML = "";
+
+  if (modalComments.length === 0) {
+    commentsThreadContainer.innerHTML = `<div class="comment-empty">No comments yet. Start the discussion!</div>`;
+    return;
+  }
+
+  const initials = (name) => {
+    if (!name) return "U";
+    return name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
+  };
+
+  modalComments.forEach((c, idx) => {
+    const item = document.createElement("div");
+    item.className = "comment-item";
+    const canDelete = currentRole === "leader" || c.user_id === user?.id;
+    const badgeClass = getRoleBadgeClass(c.role || "Developer");
+    const timeFormatted = formatCommentTime(c.created_at);
+
+    item.innerHTML = `
+      <div class="comment-header">
+        <div class="comment-author-info">
+          <span class="comment-author-avatar">${initials(c.user_name || "User")}</span>
+          <span class="comment-author-name">${escapeHtml(c.user_name || "Teammate")}</span>
+          <span class="role-badge ${badgeClass} comment-author-role">${escapeHtml(c.role || "Developer")}</span>
+        </div>
+        <div class="comment-meta-right">
+          <span class="comment-time">${escapeHtml(timeFormatted)}</span>
+          ${canDelete ? `<button type="button" class="comment-delete-btn" title="Delete comment">×</button>` : ""}
+        </div>
+      </div>
+      <div class="comment-body">${escapeHtml(c.text)}</div>
+    `;
+
+    if (canDelete) {
+      item.querySelector(".comment-delete-btn")?.addEventListener("click", async () => {
+        modalComments.splice(idx, 1);
+        renderModalComments();
+        if (editingTaskId) {
+          await persistCurrentComments();
+        }
+      });
+    }
+
+    commentsThreadContainer.appendChild(item);
+  });
+
+  commentsThreadContainer.scrollTop = commentsThreadContainer.scrollHeight;
+}
+
+async function persistCurrentComments() {
+  if (!editingTaskId) return;
+  const targetTask = cachedTasks.find(t => t.id === editingTaskId);
+  if (!targetTask) return;
+  const meta = parseTaskDescription(targetTask.description);
+  const newPacked = packTaskDescription(meta.tags, meta.due, meta.checklist, modalComments, meta.desc);
+  try {
+    await api(`/projects/${currentProject.id}/tasks/${editingTaskId}`, {
+      method: "PATCH",
+      body: { description: newPacked },
+    });
+    targetTask.description = newPacked;
+    renderBoard();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+async function handleAddComment() {
+  if (!newCommentInput) return;
+  const text = newCommentInput.value.trim();
+  if (!text) return;
+
+  const myProfile = projectMembers.find(m => m.profiles && m.profiles.id === user?.id);
+  const rawFullName = myProfile?.profiles?.full_name || user?.email?.split("@")[0] || "User";
+  const cleanName = rawFullName.split("[")[0].trim();
+
+  const newComment = {
+    id: Date.now().toString(),
+    user_id: user?.id || "",
+    user_name: cleanName,
+    role: currentAgileRole,
+    text: text,
+    created_at: new Date().toISOString(),
+  };
+
+  modalComments.push(newComment);
+  newCommentInput.value = "";
+  renderModalComments();
+
+  if (editingTaskId) {
+    await persistCurrentComments();
+  }
+}
+
+if (addCommentBtn && newCommentInput) {
+  addCommentBtn.addEventListener("click", handleAddComment);
+  newCommentInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleAddComment();
+    }
+  });
+}
+
+function openTaskModal(columnId, task = null) {
+  activeColumnIdForNewTask = columnId;
+  editingTaskId = task ? task.id : null;
+
+  resetTagChips();
+
+  if (task) {
+    document.getElementById("modalTitle").textContent = "Edit Task";
+    document.getElementById("taskName").value = task.name || "";
+
+    const { tags, due, checklist, comments, desc } = parseTaskDescription(task.description);
+    document.getElementById("taskDescription").value = desc || "";
+    document.getElementById("taskPriority").value = task.priority || "medium";
+    document.getElementById("taskPoints").value = task.story_points ?? 1;
+    if (taskDueDate) taskDueDate.value = due || "";
+
+    modalChecklist = (checklist || []).map(c => ({ t: c.t, d: !!c.d }));
+    renderModalChecklist();
+
+    modalComments = (comments || []).slice();
+    renderModalComments();
+
+    tags.forEach(t => selectOrCreateTagChip(t));
+
+    const assigneeIds = (task.assignees || []).filter(Boolean).map(a => a.id);
+    Array.from(assigneesSelect.options).forEach(opt => {
+      opt.selected = assigneeIds.includes(opt.value);
+    });
+
+    if (deleteTaskBtn) {
+      deleteTaskBtn.style.display = currentRole === "leader" || task.created_by === user?.id ? "inline-block" : "none";
+    }
+  } else {
+    document.getElementById("modalTitle").textContent = "New Task";
+    taskForm.reset();
+    document.getElementById("taskPoints").value = 1;
+    if (taskDueDate) taskDueDate.value = "";
+    modalChecklist = [];
+    renderModalChecklist();
+    modalComments = [];
+    renderModalComments();
+    Array.from(assigneesSelect.options).forEach(opt => {
+      opt.selected = false;
+    });
+    if (deleteTaskBtn) {
+      deleteTaskBtn.style.display = "none";
+    }
+  }
+
+  modalOverlay.classList.add("open");
+}
+
+function resetTagChips() {
+  const chips = tagChipsContainer.querySelectorAll(".tag-option-btn");
+  chips.forEach(btn => btn.classList.remove("selected"));
+}
+
+function selectOrCreateTagChip(tag) {
+  const existing = Array.from(tagChipsContainer.querySelectorAll(".tag-option-btn"))
+    .find(b => b.dataset.tag.toLowerCase() === tag.toLowerCase());
+  if (existing) {
+    existing.classList.add("selected");
+  } else {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "tag-option-btn selected";
+    btn.dataset.tag = tag;
+    btn.textContent = tag;
+    btn.addEventListener("click", () => btn.classList.toggle("selected"));
+    tagChipsContainer.appendChild(btn);
+  }
+}
+
+if (tagChipsContainer) {
+  tagChipsContainer.querySelectorAll(".tag-option-btn").forEach(btn => {
+    btn.addEventListener("click", () => btn.classList.toggle("selected"));
+  });
+}
+
+if (addCustomTagBtn && customTagInput) {
+  addCustomTagBtn.addEventListener("click", () => {
+    const customTag = customTagInput.value.trim();
+    if (!customTag) return;
+    selectOrCreateTagChip(customTag);
+    customTagInput.value = "";
+  });
+}
+
+if (cancelTaskBtn) {
+  cancelTaskBtn.addEventListener("click", () => {
+    modalOverlay.classList.remove("open");
+  });
+}
+
+if (deleteTaskBtn) {
+  deleteTaskBtn.addEventListener("click", async () => {
+    if (!editingTaskId) return;
+    if (!confirm("Are you sure you want to delete this task?")) return;
+    try {
+      await api(`/projects/${currentProject.id}/tasks/${editingTaskId}`, {
+        method: "DELETE",
+      });
+      modalOverlay.classList.remove("open");
+      showToast("Task deleted.", "success");
+      renderBoard();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+taskForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const selectedAssignees = Array.from(assigneesSelect.selectedOptions).map(o => o.value);
+  const saveBtn = taskForm.querySelector('button[type="submit"]');
+  const originalLabel = saveBtn.textContent;
+  saveBtn.disabled = true;
+  saveBtn.textContent = "Saving…";
+
+  const selectedTags = Array.from(tagChipsContainer.querySelectorAll(".tag-option-btn.selected"))
+    .map(btn => btn.dataset.tag);
+  const cleanDescription = document.getElementById("taskDescription").value.trim();
+  const dueDateVal = taskDueDate ? taskDueDate.value : "";
+  const packedDescription = packTaskDescription(selectedTags, dueDateVal, modalChecklist, modalComments, cleanDescription);
+
+  const taskData = {
+    name: document.getElementById("taskName").value.trim(),
+    description: packedDescription,
+    priority: document.getElementById("taskPriority").value,
+    story_points: parseInt(document.getElementById("taskPoints").value, 10) || 0,
+  };
+
+  try {
+    if (editingTaskId) {
+      await api(`/projects/${currentProject.id}/tasks/${editingTaskId}`, {
+        method: "PATCH",
+        body: taskData,
+      });
+      if (currentRole === "leader") {
+        await api(`/projects/${currentProject.id}/tasks/${editingTaskId}/assignees`, {
+          method: "PUT",
+          body: { assignee_ids: selectedAssignees },
+        });
+      }
+      showToast("Task updated.", "success");
+    } else {
+      await api(`/projects/${currentProject.id}/tasks`, {
+        method: "POST",
+        body: {
+          ...taskData,
+          column_id: activeColumnIdForNewTask,
+          assignee_ids: selectedAssignees,
+        },
+      });
+      showToast("Task created.", "success");
+    }
+    modalOverlay.classList.remove("open");
+    renderBoard();
+  } catch (err) {
+    showToast(err.message, "error");
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = originalLabel;
+  }
+});
+
+async function handleAddColumn() {
+  const name = prompt("Column title:");
+  if (!name) return;
+  try {
+    await api(`/projects/${currentProject.id}/columns`, { method: "POST", body: { name: name.trim() } });
+    showToast(`Column "${name.trim()}" added.`, "success");
+    renderBoard();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+function applyFilters() {
+  const cards = document.querySelectorAll(".task-card");
+  const query = searchFilterText.trim().toLowerCase();
+
+  cards.forEach(card => {
+    const cardName = card.dataset.name || "";
+    const cardDesc = card.dataset.desc || "";
+    const cardPriority = card.dataset.priority || "";
+    const cardTags = (card.dataset.tags || "").split(",").filter(Boolean);
+
+    const matchesSearch = !query || cardName.includes(query) || cardDesc.includes(query);
+    const matchesPriority = activeFilterPriority === "all" || cardPriority === activeFilterPriority;
+    const matchesTag = activeFilterTag === "all" || cardTags.includes(activeFilterTag.toLowerCase());
+
+    if (matchesSearch && matchesPriority && matchesTag) {
+      card.style.display = "";
+    } else {
+      card.style.display = "none";
+    }
+  });
+
+  document.querySelectorAll(".column").forEach(col => {
+    const visibleCards = col.querySelectorAll('.task-card:not([style*="display: none"])');
+    const countBadge = col.querySelector(".column-count");
+    if (countBadge) countBadge.textContent = visibleCards.length;
+  });
+}
+
+if (searchInput) {
+  searchInput.addEventListener("input", (e) => {
+    searchFilterText = e.target.value;
+    applyFilters();
+  });
+}
+
+document.querySelectorAll("[data-filter-tag]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter-tag]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeFilterTag = btn.dataset.filterTag;
+    applyFilters();
+  });
+});
+
+document.querySelectorAll("[data-filter-priority]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter-priority]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeFilterPriority = btn.dataset.filterPriority;
+    applyFilters();
+  });
+});
+
+if (newProjectBtn) {
+  newProjectBtn.addEventListener("click", () => {
+    if (projectForm) projectForm.reset();
+    if (projectModalOverlay) projectModalOverlay.classList.add("open");
+  });
+}
+
+if (cancelProjectBtn) {
+  cancelProjectBtn.addEventListener("click", () => {
+    if (projectModalOverlay) projectModalOverlay.classList.remove("open");
+  });
+}
+
+if (projectForm) {
+  projectForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nameInput = document.getElementById("newProjectName");
+    const name = nameInput ? nameInput.value.trim() : "";
+    if (!name) return;
+    try {
+      const newProj = await api("/projects", {
+        method: "POST",
+        body: { name },
+      });
+      if (projectModalOverlay) projectModalOverlay.classList.remove("open");
+      showToast(`Project "${name}" created.`, "success");
+      await init(newProj.id);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+if (projectSelect) {
+  projectSelect.addEventListener("change", (e) => {
+    init(e.target.value);
+  });
+}
+
+if (topAddTaskBtn) {
+  topAddTaskBtn.addEventListener("click", async () => {
+    try {
+      const columns = await api(`/projects/${currentProject.id}/columns`);
+      if (columns && columns.length > 0) {
+        openTaskModal(columns[0].id);
+      } else {
+        showToast("Create a column first before adding tasks.", "error");
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+if (settingsBtn) {
+  settingsBtn.addEventListener("click", async () => {
+    if (renameProjectInput) renameProjectInput.value = currentProject?.name || "";
+    await refreshMemberList();
+    updateActiveThemeSwatches();
+    if (settingsModalOverlay) settingsModalOverlay.classList.add("open");
+  });
+}
+
+if (closeSettingsBtn) {
+  closeSettingsBtn.addEventListener("click", () => {
+    if (settingsModalOverlay) settingsModalOverlay.classList.remove("open");
+  });
+}
+
+document.querySelectorAll(".settings-tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".settings-tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".settings-panel").forEach(p => p.classList.remove("active"));
+
+    btn.classList.add("active");
+    const tabName = btn.dataset.tab;
+    const targetPanel = document.getElementById(`tab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
+    if (targetPanel) targetPanel.classList.add("active");
+  });
+});
+
+if (renameProjectForm) {
+  renameProjectForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const newName = renameProjectInput.value.trim();
+    if (!newName) return;
+    try {
+      await api(`/projects/${currentProject.id}`, {
+        method: "PATCH",
+        body: { name: newName },
+      });
+      currentProject.name = newName;
+      const badgeClass = getRoleBadgeClass(currentAgileRole);
+      document.getElementById("projectName").innerHTML =
+        `${escapeHtml(newName)} <span class="role-badge ${badgeClass}">${escapeHtml(currentAgileRole)}</span>`;
+      showToast("Project renamed.", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+if (deleteProjectBtn) {
+  deleteProjectBtn.addEventListener("click", async () => {
+    if (!currentProject) return;
+    if (!confirm(`Delete "${currentProject.name}"? This action cannot be undone.`)) return;
+    try {
+      await api(`/projects/${currentProject.id}`, { method: "DELETE" });
+      if (settingsModalOverlay) settingsModalOverlay.classList.remove("open");
+      showToast("Project deleted.", "success");
+      await init();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+async function refreshMemberList() {
+  if (!memberListContainer) return;
+  try {
+    const [members, allUsers] = await Promise.all([
+      api(`/projects/${currentProject.id}/members`),
+      api("/auth/users"),
+    ]);
+
+    projectMembers = members || [];
+    populateAssigneeOptions();
+
+    const isLeaderLevel = currentRole === "leader";
+
+    if (members.length === 0) {
+      memberListContainer.innerHTML = `<div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">No members found.</div>`;
+    } else {
+      memberListContainer.innerHTML = members.map(m => {
+        const p = m.profiles;
+        if (!p) return "";
+        const roleName = m.agile_role || (m.role === "leader" ? "Project Leader" : "Developer");
+        const badgeClass = getRoleBadgeClass(roleName);
+        const isMe = p.id === user?.id;
+
+        let actionsHtml = "";
+        if (isLeaderLevel) {
+          actionsHtml = `
+            <div class="member-actions">
+              <select class="member-role-select" data-user-id="${p.id}">
+                <option value="project_leader" ${roleName === "Project Leader" ? "selected" : ""}>Project Leader</option>
+                <option value="scrum_master" ${roleName === "Scrum Master" ? "selected" : ""}>Scrum Master</option>
+                <option value="product_owner" ${roleName === "Product Owner" ? "selected" : ""}>Product Owner</option>
+                <option value="developer" ${roleName === "Developer" ? "selected" : ""}>Developer</option>
+                <option value="qa_engineer" ${roleName === "QA Engineer" ? "selected" : ""}>QA Engineer</option>
+              </select>
+              ${!isMe ? `<button type="button" class="btn-ghost" data-remove-user-id="${p.id}" style="color:#DC2626; padding:0.2rem 0.5rem;">Remove</button>` : ""}
+            </div>
+          `;
+        } else {
+          actionsHtml = `<span class="role-badge ${badgeClass}">${escapeHtml(roleName)}</span>`;
+        }
+
+        return `
+          <div class="member-row">
+            <div class="member-info">
+              <div style="display:flex; align-items:center; gap:0.4rem;">
+                <span class="member-name">${escapeHtml(p.full_name || p.email)} ${isMe ? "(You)" : ""}</span>
+                <span class="role-badge ${badgeClass}">${escapeHtml(roleName)}</span>
+              </div>
+              <span class="member-email">${escapeHtml(p.email)}</span>
+            </div>
+            ${actionsHtml}
+          </div>
+        `;
+      }).join("");
+
+      memberListContainer.querySelectorAll(".member-role-select").forEach(select => {
+        select.addEventListener("change", async (e) => {
+          const uid = e.target.dataset.userId;
+          const newRole = e.target.value;
+          try {
+            await api(`/projects/${currentProject.id}/members/${uid}`, {
+              method: "PATCH",
+              body: { role: newRole },
+            });
+            showToast("Member role updated.", "success");
+            await refreshMemberList();
+            await init(currentProject.id);
+          } catch (err) {
+            showToast(err.message, "error");
+          }
+        });
+      });
+
+      memberListContainer.querySelectorAll("[data-remove-user-id]").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          const uid = e.target.dataset.removeUserId;
+          if (!confirm("Remove this member from the project?")) return;
+          try {
+            await api(`/projects/${currentProject.id}/members/${uid}`, {
+              method: "DELETE",
+            });
+            showToast("Member removed.", "success");
+            await refreshMemberList();
+            await init(currentProject.id);
+          } catch (err) {
+            showToast(err.message, "error");
+          }
+        });
+      });
+    }
+
+    if (workspaceUsersContainer) {
+      const memberMap = new Map();
+      projectMembers.filter(m => m.profiles).forEach(m => {
+        memberMap.set(m.profiles.id, m.agile_role || (m.role === "leader" ? "Project Leader" : "Developer"));
+      });
+
+      if (!allUsers || allUsers.length === 0) {
+        workspaceUsersContainer.innerHTML = `<div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">No other registered users.</div>`;
+      } else {
+        workspaceUsersContainer.innerHTML = allUsers.map(u => {
+          const inProject = memberMap.has(u.id);
+          const currentRoleName = memberMap.get(u.id);
+          const isMe = u.id === user?.id;
+          const cleanName = (u.full_name || "").split("[")[0].trim() || u.email;
+
+          return `
+            <div class="member-row">
+              <div class="member-info">
+                <span class="member-name">${escapeHtml(cleanName)} ${isMe ? "(You)" : ""}</span>
+                <span class="member-email">${escapeHtml(u.email)}</span>
+              </div>
+              <div>
+                ${inProject
+                  ? `<span class="role-badge ${getRoleBadgeClass(currentRoleName)}">${escapeHtml(currentRoleName)}</span>`
+                  : isLeaderLevel
+                    ? `<button type="button" class="btn-secondary" data-add-workspace-user-id="${u.id}" style="font-size:0.75rem; padding:0.25rem 0.6rem;">+ Add to Project</button>`
+                    : ""
+                }
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        workspaceUsersContainer.querySelectorAll("[data-add-workspace-user-id]").forEach(btn => {
+          btn.addEventListener("click", async (e) => {
+            const uid = e.target.dataset.addWorkspaceUserId;
+            try {
+              await api(`/projects/${currentProject.id}/members`, {
+                method: "POST",
+                body: { user_id: uid, role: "developer" },
+              });
+              showToast("Member added to project.", "success");
+              await refreshMemberList();
+              await init(currentProject.id);
+            } catch (err) {
+              showToast(err.message, "error");
+            }
+          });
+        });
+      }
+    }
+  } catch (err) {
+    memberListContainer.innerHTML = `<div style="font-size:0.85rem; color:#DC2626; padding:0.5rem 0;">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+if (addAllMembersBtn) {
+  addAllMembersBtn.addEventListener("click", async () => {
+    try {
+      await api(`/projects/${currentProject.id}/members/all`, { method: "POST" });
+      showToast("All workspace users added to project.", "success");
+      await refreshMemberList();
+      await init(currentProject.id);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+if (addMemberForm) {
+  addMemberForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const emailInput = document.getElementById("newMemberEmail");
+    const roleInput = document.getElementById("newMemberRole");
+    const email = emailInput ? emailInput.value.trim() : "";
+    const role = roleInput ? roleInput.value : "developer";
+    if (!email) return;
+
+    try {
+      await api(`/projects/${currentProject.id}/members`, {
+        method: "POST",
+        body: { email, role },
+      });
+      emailInput.value = "";
+      showToast(`Added ${email} to project.`, "success");
+      await refreshMemberList();
+      await init(currentProject.id);
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+function updateActiveThemeSwatches() {
+  const curTheme = document.documentElement.getAttribute("data-theme") || "slate";
+  const curAccent = document.documentElement.getAttribute("data-accent") || "indigo";
+
+  document.querySelectorAll("[data-set-theme]").forEach(c => {
+    c.classList.toggle("active", c.dataset.setTheme === curTheme);
+  });
+
+  document.querySelectorAll("[data-set-accent]").forEach(s => {
+    s.classList.toggle("active", s.dataset.setAccent === curAccent);
+  });
+}
+
+document.querySelectorAll("[data-set-theme]").forEach(card => {
+  card.addEventListener("click", () => {
+    const themeName = card.dataset.setTheme;
+    document.documentElement.setAttribute("data-theme", themeName);
+    localStorage.setItem("scrumptious_theme", themeName);
+    updateActiveThemeSwatches();
+  });
+});
+
+document.querySelectorAll("[data-set-accent]").forEach(swatch => {
+  swatch.addEventListener("click", () => {
+    const accentName = swatch.dataset.setAccent;
+    document.documentElement.setAttribute("data-accent", accentName);
+    localStorage.setItem("scrumptious_accent", accentName);
+    updateActiveThemeSwatches();
+  });
+});
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
+}
