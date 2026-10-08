@@ -43,11 +43,12 @@ def list_my_projects():
     )
     # safe lookup — falls back to {} if the user has no profile row
     my_profile = maybe_one(supabase.table("profiles").select("full_name").eq("id", g.user.id)) or {}
-    _, my_agile_role = extract_agile_role(my_profile.get("full_name", ""), "developer")
+    _, my_agile_role = extract_agile_role(my_profile.get("full_name") or "", "developer")
 
     projects = [
-        {**m["projects"], "my_role": m["role"], "my_agile_role": my_agile_role}
-        for m in memberships.data
+        {**m["projects"], "my_role": m.get("role", "developer"), "my_agile_role": my_agile_role}
+        for m in (memberships.data or [])
+        if m.get("projects")
     ]
     return jsonify(projects), 200
 
@@ -82,7 +83,7 @@ def create_project():
         for i, col_name in enumerate(default_columns)   
     ]).execute()
 
-    return jsonify(project), 201
+    return jsonify({**project, "my_role": "leader", "my_agile_role": "Project Leader"}), 201
 
 
 @projects_bp.route("/<project_id>/members", methods=["GET"])
@@ -95,16 +96,16 @@ def list_members(project_id):
         .execute()
     )
     formatted = []
-    for item in result.data:
+    for item in (result.data or []):
         p = item.get("profiles") or {}
-        clean_name, agile_role = extract_agile_role(p.get("full_name", ""), item.get("role", "developer"))
+        clean_name, agile_role = extract_agile_role(p.get("full_name") or "", item.get("role", "developer"))
         formatted.append({
-            "role": item["role"],
+            "role": item.get("role", "developer"),
             "agile_role": agile_role,
             "profiles": {
                 "id": p.get("id"),
-                "full_name": clean_name,
-                "email": p.get("email"),
+                "full_name": clean_name or p.get("email", ""),
+                "email": p.get("email", ""),
             }
         })
     return jsonify(formatted), 200
@@ -132,7 +133,7 @@ def add_member(project_id):
             return jsonify({"error": "email or user_id required"}), 400
         profile = maybe_one(supabase.table("profiles").select("id, full_name, email").eq("email", email))
 
-    if not profile:  
+    if not profile:
         return jsonify({"error": "No user found with that email — they need to sign up first"}), 404
 
     target_id = profile["id"]   
@@ -151,10 +152,13 @@ def add_member(project_id):
         "role": db_role,
     }).execute()
 
-    current_name = profile.get("full_name") or ""   
-    clean_name = current_name.split("[")[0].strip()
-    new_name = f"{clean_name} [{display_role}]"
-    supabase.table("profiles").update({"full_name": new_name}).eq("id", target_id).execute()
+    current_name = profile.get("full_name") or ""
+    clean_name = current_name.split("[")[0].strip() if current_name else (profile.get("email") or "")
+    new_name = f"{clean_name} [{display_role}]".strip()
+    try:
+        supabase.table("profiles").update({"full_name": new_name}).eq("id", target_id).execute()
+    except Exception:
+        pass
 
     return jsonify({"message": "Member added", "role": db_role, "agile_role": display_role}), 201
 
@@ -171,7 +175,7 @@ def add_all_members(project_id):
             .eq("project_id", project_id)
             .eq("user_id", u["id"])
         )
-        if not existing:  
+        if not existing:
             supabase.table("project_members").insert({
                 "project_id": project_id,
                 "user_id": u["id"],
@@ -230,9 +234,13 @@ def update_member(project_id, user_id):
     target_profile = maybe_one(supabase.table("profiles").select("full_name").eq("id", user_id))
     if target_profile:
         current_name = target_profile.get("full_name") or ""
-        clean_name = current_name.split("[")[0].strip()
-        new_name = f"{clean_name} [{display_role}]"
-        supabase.table("profiles").update({"full_name": new_name}).eq("id", user_id).execute()
+        clean_name = current_name.split("[")[0].strip() if current_name else ""
+        if clean_name:
+            new_name = f"{clean_name} [{display_role}]".strip()
+            try:
+                supabase.table("profiles").update({"full_name": new_name}).eq("id", user_id).execute()
+            except Exception:
+                pass
 
     return jsonify({"role": db_role, "agile_role": display_role}), 200
 

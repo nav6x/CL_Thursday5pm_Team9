@@ -38,8 +38,9 @@ def list_tasks(project_id):
         .execute()
     )
     assignees_by_task = {}
-    for row in assignee_rows.data:
-        assignees_by_task.setdefault(row["task_id"], []).append(row["profiles"])
+    for row in (assignee_rows.data or []):
+        if row.get("profiles"):
+            assignees_by_task.setdefault(row["task_id"], []).append(row["profiles"])
 
     for task in tasks:
         task["assignees"] = assignees_by_task.get(task["id"], [])
@@ -77,9 +78,10 @@ def create_task(project_id):
     }).execute().data[0]
 
     assignee_ids = body.get("assignee_ids", [])
-    if assignee_ids:
+    valid_uids = list(dict.fromkeys([uid for uid in assignee_ids if uid]))
+    if valid_uids:
         supabase.table("task_assignees").insert([
-            {"task_id": task["id"], "user_id": uid} for uid in assignee_ids
+            {"task_id": task["id"], "user_id": uid} for uid in valid_uids
         ]).execute()
 
     return jsonify(task), 201
@@ -154,11 +156,15 @@ def set_assignees(project_id, task_id):
 
     body = request.get_json(force=True)
     assignee_ids = body.get("assignee_ids", [])
+    valid_uids = list(dict.fromkeys([uid for uid in assignee_ids if uid]))
 
-    supabase.table("task_assignees").delete().eq("task_id", task_id).execute()
-    if assignee_ids:
-        supabase.table("task_assignees").insert([
-            {"task_id": task_id, "user_id": uid} for uid in assignee_ids
-        ]).execute()
+    try:
+        supabase.table("task_assignees").delete().eq("task_id", task_id).execute()
+        if valid_uids:
+            supabase.table("task_assignees").insert([
+                {"task_id": task_id, "user_id": uid} for uid in valid_uids
+            ]).execute()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
     return jsonify({"message": "Assignees updated"}), 200

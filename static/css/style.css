@@ -75,6 +75,22 @@
   --accent-light: #FFE4E6;
 }
 
+[data-theme="dark"][data-accent="cyan"] {
+  --accent-light: #082F49;
+}
+
+[data-theme="dark"][data-accent="emerald"] {
+  --accent-light: #022C22;
+}
+
+[data-theme="dark"][data-accent="amber"] {
+  --accent-light: #451A03;
+}
+
+[data-theme="dark"][data-accent="rose"] {
+  --accent-light: #4C0519;
+}
+
 * {
   box-sizing: border-box;
 }

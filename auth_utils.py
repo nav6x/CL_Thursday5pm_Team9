@@ -34,7 +34,20 @@ def get_role_in_project(user_id, project_id):
         .eq("user_id", user_id)
         .eq("project_id", project_id)
     )
-    return result["role"] if result else None
+    if not result:
+        # Fallback check if user is the project creator
+        try:
+            proj = maybe_one(supabase.table("projects").select("created_by").eq("id", project_id))
+            if proj and proj.get("created_by") == user_id:
+                return "leader"
+        except Exception:
+            pass
+        return None
+
+    role = result.get("role")
+    if role in ("leader", "project_leader", "scrum_master", "product_owner"):
+        return "leader"
+    return role or "developer"
 
 
 def require_role(*allowed_roles):

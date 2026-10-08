@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Scrumptious — Log In</title>
   <link rel="stylesheet" href="static/css/style.css">
+  <script>
+    try {
+      const theme = localStorage.getItem("scrumptious_theme") || "slate";
+      const accent = localStorage.getItem("scrumptious_accent") || "indigo";
+      document.documentElement.setAttribute("data-theme", theme);
+      document.documentElement.setAttribute("data-accent", accent);
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <div class="auth-screen">
