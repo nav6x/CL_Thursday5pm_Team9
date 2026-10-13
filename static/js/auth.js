@@ -12,6 +12,28 @@ const errorBox = document.getElementById("formError");
 
 if (getToken()) window.location.href = "board.html";
 
+// Check if redirected from Supabase email verification link
+(function checkEmailVerification() {
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const searchParams = new URLSearchParams(window.location.search);
+  const authType = hashParams.get("type") || searchParams.get("type");
+  const errorDesc = hashParams.get("error_description") || searchParams.get("error_description");
+
+  if (errorDesc) {
+    errorBox.textContent = decodeURIComponent(errorDesc.replace(/\+/g, " "));
+    errorBox.style.color = "#991B1B";
+    errorBox.style.background = "#FEE2E2";
+    errorBox.style.display = "block";
+    history.replaceState(null, "", window.location.pathname);
+  } else if (authType === "signup" || authType === "email_confirmation") {
+    errorBox.textContent = "Email verified successfully! You can now log in.";
+    errorBox.style.color = "#059669";
+    errorBox.style.background = "#DCFCE7";
+    errorBox.style.display = "block";
+    history.replaceState(null, "", window.location.pathname);
+  }
+})();
+
 switchLink.addEventListener("click", (e) => {
   e.preventDefault();
   mode = mode === "login" ? "signup" : "login";
@@ -52,10 +74,10 @@ form.addEventListener("submit", async (e) => {
   try {
     if (mode === "signup") {
       const fullName = fullNameInput.value.trim();
-      await api("/auth/signup", { method: "POST", body: { email, password, full_name: fullName } });
+      const res = await api("/auth/signup", { method: "POST", body: { email, password, full_name: fullName } });
       mode = "login";
       updateFormMode();
-      errorBox.textContent = "Account created. You can log in now.";
+      errorBox.textContent = res.message || "Account created! A confirmation email has been sent. Please click the verification link before logging in.";
       errorBox.style.color = "#059669";
       errorBox.style.background = "#DCFCE7";
       errorBox.style.display = "block";

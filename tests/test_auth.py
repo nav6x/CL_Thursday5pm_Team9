@@ -143,6 +143,21 @@ class TestLogin(unittest.TestCase):
                 actual = response.get_json()["error"]
                 self.assertTrue(expected == actual)
 
+    def test_login_email_not_confirmed(self):
+        mock_supabase_auth = MagicMock()
+        mock_supabase_auth.auth.sign_in_with_password.side_effect = Exception("Email not confirmed")
+
+        with patch.object(auth, "supabase_auth", mock_supabase_auth):
+            with flask_app.test_request_context(
+                "/api/auth/login",
+                method="POST",
+                json={"email": "jamie@example.com", "password": "hunter2"},
+            ):
+                response, status_code = auth.login()
+
+                self.assertEqual(status_code, 401)
+                self.assertIn("Email not confirmed", response.get_json()["error"])
+
     def test_login_success(self):
         fake_session = MagicMock()
         fake_session.access_token = "fake-jwt-token"

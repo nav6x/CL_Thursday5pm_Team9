@@ -28,14 +28,17 @@ def signup():
 
     # Mirror the new user into our own profiles table so we can join
     # on it elsewhere (project_members, tasks.created_by, etc.)
-    supabase.table("profiles").insert({
-        "id": result.user.id,
-        "full_name": full_name,
-        "email": email,
-    }).execute()
+    try:
+        supabase.table("profiles").insert({
+            "id": result.user.id,
+            "full_name": full_name,
+            "email": email,
+        }).execute()
+    except Exception:
+        pass
 
     return jsonify({
-        "message": "Account created. Check your email to confirm, then log in.",
+        "message": "Account created! Please check your email and click the confirmation link before logging in.",
         "user_id": result.user.id,
     }), 201
 
@@ -51,13 +54,33 @@ def login():
             "email": email,
             "password": password,
         })
-    except Exception:
+    except Exception as e:
+        error_msg = str(e)
+        if "email not confirmed" in error_msg.lower():
+            return jsonify({
+                "error": "Email not confirmed. Please check your inbox and verify your email before logging in."
+            }), 401
         return jsonify({"error": "Invalid email or password"}), 401
 
     return jsonify({
         "access_token": result.session.access_token,
         "user": {"id": result.user.id, "email": result.user.email},
     }), 200
+
+
+@auth_bp.route("/resend-verification", methods=["POST"])
+def resend_verification():
+    body = request.get_json(force=True)
+    email = body.get("email", "").strip().lower()
+    if not email:
+        return jsonify({"error": "email is required"}), 400
+
+    try:
+        supabase_auth.auth.resend({"type": "signup", "email": email})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify({"message": "Verification email resent. Please check your inbox."}), 200
 
 
 @auth_bp.route("/users", methods=["GET"])
