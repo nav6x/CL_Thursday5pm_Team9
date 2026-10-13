@@ -198,6 +198,7 @@
         <button type="button" class="settings-tab-btn active" data-tab="general">General</button>
         <button type="button" class="settings-tab-btn" data-tab="team">Team & Roles</button>
         <button type="button" class="settings-tab-btn" data-tab="appearance">Appearance</button>
+        <button type="button" class="settings-tab-btn" data-tab="security">Security (2FA)</button>
       </div>
 
       <div class="settings-panel active" id="tabGeneral">
@@ -281,6 +282,50 @@
           <div class="accent-swatch" data-set-accent="emerald" style="background:#059669;" title="Emerald Green"></div>
           <div class="accent-swatch" data-set-accent="amber" style="background:#D97706;" title="Amber Gold"></div>
           <div class="accent-swatch" data-set-accent="rose" style="background:#E11D48;" title="Rose Red"></div>
+        </div>
+      </div>
+
+      <div class="settings-panel" id="tabSecurity">
+        <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted);">Two-Factor Authentication (2FA)</label>
+        <p style="font-size:0.85rem; color:var(--ink-muted); margin:0.35rem 0 1rem;">Protect your account with Time-based One-Time Password (TOTP) verification using Google Authenticator, Microsoft Authenticator, or Apple Passwords.</p>
+
+        <div id="mfaStatusCard" style="background:var(--surface-sunken); border:1px solid var(--border-color); border-radius:8px; padding:1rem; margin-bottom:1rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:600; font-size:0.95rem;" id="mfaStatusHeading">Checking 2FA status…</div>
+              <div style="font-size:0.8rem; color:var(--ink-muted);" id="mfaStatusSub">Connecting to auth service…</div>
+            </div>
+            <div id="mfaBadge"></div>
+          </div>
+        </div>
+
+        <div id="mfaDisabledView" style="display:none;">
+          <button type="button" class="btn-primary" id="startMfaEnrollBtn" style="width:auto;">Set Up Two-Factor Authentication</button>
+        </div>
+
+        <div id="mfaEnrollView" style="display:none; background:var(--surface-sunken); border:1px solid var(--border-color); border-radius:8px; padding:1.25rem;">
+          <h4 style="margin:0 0 0.5rem; font-size:0.95rem;">Step 1: Scan QR Code</h4>
+          <p style="font-size:0.8rem; color:var(--ink-muted); margin-bottom:1rem;">Open your authenticator app (Google Authenticator, Authy, Apple Passwords) and scan this QR code:</p>
+          <div id="mfaQrContainer" style="display:flex; justify-content:center; align-items:center; background:#fff; padding:1rem; border-radius:8px; width:fit-content; margin:0 auto 1rem;"></div>
+          
+          <div style="font-size:0.8rem; color:var(--ink-muted); margin-bottom:1rem; text-align:center;">
+            Or enter code manually: <code id="mfaSecretCode" style="font-weight:bold; background:var(--surface-card); padding:2px 6px; border-radius:4px; user-select:all;"></code>
+          </div>
+
+          <h4 style="margin:0 0 0.5rem; font-size:0.95rem;">Step 2: Enter 6-Digit Code</h4>
+          <div class="field" style="margin-bottom:1rem;">
+            <input type="text" id="mfaVerifyCodeInput" placeholder="123456" maxlength="6" inputmode="numeric" style="letter-spacing:0.25rem; font-size:1.1rem; text-align:center;">
+          </div>
+          <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+            <button type="button" class="btn-secondary" id="cancelMfaEnrollBtn">Cancel</button>
+            <button type="button" class="btn-primary" id="confirmMfaEnrollBtn" style="width:auto;">Confirm & Activate</button>
+          </div>
+        </div>
+
+        <div id="mfaEnabledView" style="display:none;">
+          <div style="display:flex; justify-content:flex-end;">
+            <button type="button" class="btn-danger" id="disableMfaBtn" style="width:auto;">Disable Two-Factor Authentication</button>
+          </div>
         </div>
       </div>
 
