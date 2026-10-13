@@ -34,9 +34,13 @@ if (getToken()) window.location.href = "board.html";
   }
 })();
 
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
+
 switchLink.addEventListener("click", (e) => {
   e.preventDefault();
   mode = mode === "login" ? "signup" : "login";
+  passwordInput.value = "";
   updateFormMode();
 });
 
@@ -45,6 +49,7 @@ function updateFormMode() {
   if (mode === "signup") {
     nameField.style.display = "flex";
     fullNameInput.required = true;
+    passwordInput.setAttribute("autocomplete", "new-password");
     formTitle.textContent = "Create your account";
     formSubtitle.textContent = "Set up a login for your sprint board.";
     submitBtn.textContent = "Sign up";
@@ -53,6 +58,8 @@ function updateFormMode() {
   } else {
     nameField.style.display = "none";
     fullNameInput.required = false;
+    fullNameInput.value = "";
+    passwordInput.setAttribute("autocomplete", "current-password");
     formTitle.textContent = "Welcome back";
     formSubtitle.textContent = "Log in to collaborate on your sprint backlog.";
     submitBtn.textContent = "Log in";
@@ -65,8 +72,8 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   errorBox.style.display = "none";
 
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value;
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
   const originalLabel = submitBtn.textContent;
   submitBtn.disabled = true;
   submitBtn.textContent = mode === "signup" ? "Creating account…" : "Logging in…";
@@ -75,9 +82,14 @@ form.addEventListener("submit", async (e) => {
     if (mode === "signup") {
       const fullName = fullNameInput.value.trim();
       const res = await api("/auth/signup", { method: "POST", body: { email, password, full_name: fullName } });
+      
+      // Cleanly reset password and name, switch to login view
+      passwordInput.value = "";
+      fullNameInput.value = "";
       mode = "login";
       updateFormMode();
-      errorBox.textContent = res.message || "Account created! A confirmation email has been sent. Please click the verification link before logging in.";
+
+      errorBox.textContent = res.message || "Account created! A confirmation email has been sent. Please verify your email before logging in.";
       errorBox.style.color = "#059669";
       errorBox.style.background = "#DCFCE7";
       errorBox.style.display = "block";

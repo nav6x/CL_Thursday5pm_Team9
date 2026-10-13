@@ -32,15 +32,15 @@
       <form id="authForm">
         <div class="field" id="nameField" style="display:none;">
           <label for="fullName">Full name</label>
-          <input type="text" id="fullName" placeholder="Jamie Chen">
+          <input type="text" id="fullName" placeholder="Jamie Chen" autocomplete="name">
         </div>
         <div class="field">
           <label for="email">Email</label>
-          <input type="email" id="email" placeholder="you@example.com" required>
+          <input type="email" id="email" placeholder="you@example.com" required autocomplete="email">
         </div>
         <div class="field">
           <label for="password">Password</label>
-          <input type="password" id="password" placeholder="••••••••" required>
+          <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
         </div>
         <button type="submit" class="btn-primary" id="submitBtn">Log in</button>
       </form>
