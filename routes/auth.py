@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from config import supabase, supabase_auth
+from auth_utils import login_required
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -62,10 +63,169 @@ def login():
             }), 401
         return jsonify({"error": "Invalid email or password"}), 401
 
+    # Check if user has an active TOTP Two-Factor Authentication factor
+    factors = getattr(result.user, "factors", None)
+    if not factors:
+        try:
+            admin_user = supabase.auth.admin.get_user_by_id(result.user.id)
+            factors = getattr(admin_user.user, "factors", None) or []
+        except Exception:
+            factors = []
+
+    verified_mfa = [
+        f for f in factors
+        if (getattr(f, "status", None) == "verified" or (isinstance(f, dict) and f.get("status") == "verified"))
+        and (getattr(f, "factor_type", None) == "totp" or (isinstance(f, dict) and f.get("factor_type") == "totp"))
+    ]
+
+    if verified_mfa:
+        factor_id = verified_mfa[0].id if hasattr(verified_mfa[0], "id") else verified_mfa[0]["id"]
+        return jsonify({
+            "mfa_required": True,
+            "factor_id": factor_id,
+            "temp_token": result.session.access_token,
+            "user": {"id": result.user.id, "email": result.user.email},
+        }), 200
+
     return jsonify({
         "access_token": result.session.access_token,
         "user": {"id": result.user.id, "email": result.user.email},
     }), 200
+
+
+@auth_bp.route("/mfa/verify-login", methods=["POST"])
+def verify_mfa_login():
+    """Verifies a 6-digit TOTP code during the login flow and returns the full session."""
+    body = request.get_json(force=True)
+    temp_token = body.get("temp_token")
+    factor_id = body.get("factor_id")
+    code = body.get("code", "").strip()
+
+    if not temp_token or not factor_id or not code:
+        return jsonify({"error": "temp_token, factor_id, and code are required"}), 400
+
+    try:
+        challenge_res = supabase_auth.auth._request(
+            "POST",
+            f"factors/{factor_id}/challenge",
+            jwt=temp_token,
+        )
+        challenge_id = challenge_res.json().get("id")
+
+        verify_res = supabase_auth.auth._request(
+            "POST",
+            f"factors/{factor_id}/verify",
+            jwt=temp_token,
+            body={"challenge_id": challenge_id, "code": code},
+        )
+        data = verify_res.json()
+        if "access_token" not in data:
+            return jsonify({"error": "Invalid verification code. Please try again."}), 401
+
+        return jsonify({
+            "access_token": data["access_token"],
+            "user": data.get("user", {}),
+        }), 200
+    except Exception:
+        return jsonify({"error": "Invalid verification code. Please try again."}), 401
+
+
+@auth_bp.route("/mfa/enroll", methods=["POST"])
+@login_required
+def enroll_mfa():
+    """Generates a new TOTP factor (QR code SVG & secret key) for the authenticated user."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.split(" ", 1)[1]
+
+    try:
+        res = supabase_auth.auth._request(
+            "POST",
+            "factors",
+            jwt=token,
+            body={"factor_type": "totp", "issuer": "Scrumptious", "friendly_name": "Authenticator App"},
+        )
+        data = res.json()
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@auth_bp.route("/mfa/confirm-enrollment", methods=["POST"])
+@login_required
+def confirm_mfa_enrollment():
+    """Validates the first 6-digit code after scanning to activate 2FA on the account."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.split(" ", 1)[1]
+    body = request.get_json(force=True)
+    factor_id = body.get("factor_id")
+    code = body.get("code", "").strip()
+
+    if not factor_id or not code:
+        return jsonify({"error": "factor_id and code are required"}), 400
+
+    try:
+        challenge_res = supabase_auth.auth._request(
+            "POST",
+            f"factors/{factor_id}/challenge",
+            jwt=token,
+        )
+        challenge_id = challenge_res.json().get("id")
+
+        verify_res = supabase_auth.auth._request(
+            "POST",
+            f"factors/{factor_id}/verify",
+            jwt=token,
+            body={"challenge_id": challenge_id, "code": code},
+        )
+        data = verify_res.json()
+        return jsonify({
+            "message": "Two-factor authentication successfully enabled!",
+            "access_token": data.get("access_token", token),
+        }), 200
+    except Exception:
+        return jsonify({"error": "Invalid code. Please check your authenticator app and try again."}), 400
+
+
+@auth_bp.route("/mfa/unenroll", methods=["POST"])
+@login_required
+def unenroll_mfa():
+    """Disables Two-Factor Authentication by unenrolling the TOTP factor."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.split(" ", 1)[1]
+    body = request.get_json(force=True) if request.data else {}
+    factor_id = body.get("factor_id")
+
+    try:
+        if not factor_id:
+            user_data = supabase_auth.auth._request("GET", "user", jwt=token).json()
+            factors = user_data.get("factors", [])
+            totp = [f for f in factors if f.get("factor_type") == "totp" and f.get("status") == "verified"]
+            if not totp:
+                return jsonify({"message": "Two-factor authentication is not enabled"}), 200
+            factor_id = totp[0]["id"]
+
+        supabase_auth.auth._request("DELETE", f"factors/{factor_id}", jwt=token)
+        return jsonify({"message": "Two-factor authentication disabled"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@auth_bp.route("/mfa/status", methods=["GET"])
+@login_required
+def mfa_status():
+    """Checks whether 2FA is currently active for the logged in user."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.split(" ", 1)[1]
+    try:
+        user_data = supabase_auth.auth._request("GET", "user", jwt=token).json()
+        factors = user_data.get("factors", [])
+        verified_totp = [f for f in factors if f.get("factor_type") == "totp" and f.get("status") == "verified"]
+        return jsonify({
+            "enabled": len(verified_totp) > 0,
+            "factor_id": verified_totp[0]["id"] if verified_totp else None,
+        }), 200
+    except Exception as e:
+        return jsonify({"enabled": False, "error": str(e)}), 200
 
 
 @auth_bp.route("/resend-verification", methods=["POST"])

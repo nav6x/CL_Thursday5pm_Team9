@@ -967,6 +967,7 @@ if (settingsBtn) {
     if (renameProjectInput) renameProjectInput.value = currentProject?.name || "";
     await refreshMemberList();
     updateActiveThemeSwatches();
+    loadMfaStatus();
     if (settingsModalOverlay) settingsModalOverlay.classList.add("open");
   });
 }
@@ -986,8 +987,156 @@ document.querySelectorAll(".settings-tab-btn").forEach(btn => {
     const tabName = btn.dataset.tab;
     const targetPanel = document.getElementById(`tab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
     if (targetPanel) targetPanel.classList.add("active");
+    if (tabName === "security") {
+      loadMfaStatus();
+    }
   });
 });
+
+let currentEnrollmentFactorId = null;
+
+async function loadMfaStatus() {
+  const heading = document.getElementById("mfaStatusHeading");
+  const sub = document.getElementById("mfaStatusSub");
+  const badge = document.getElementById("mfaBadge");
+  const disabledView = document.getElementById("mfaDisabledView");
+  const enabledView = document.getElementById("mfaEnabledView");
+  const enrollView = document.getElementById("mfaEnrollView");
+
+  if (!heading) return;
+
+  try {
+    const res = await api("/auth/mfa/status");
+    if (res.enabled) {
+      heading.textContent = "Two-Factor Authentication is Active";
+      heading.style.color = "var(--ink-success, #059669)";
+      sub.textContent = "Your account is secured with an authenticator app.";
+      if (badge) badge.innerHTML = `<span style="background:#DCFCE7; color:#059669; font-weight:600; padding:4px 8px; border-radius:4px; font-size:0.75rem;">ENABLED</span>`;
+      if (disabledView) disabledView.style.display = "none";
+      if (enrollView) enrollView.style.display = "none";
+      if (enabledView) enabledView.style.display = "block";
+    } else {
+      heading.textContent = "Two-Factor Authentication is Off";
+      heading.style.color = "var(--ink-text)";
+      sub.textContent = "Add an extra layer of security using an authenticator app.";
+      if (badge) badge.innerHTML = `<span style="background:#F3F4F6; color:#6B7280; font-weight:600; padding:4px 8px; border-radius:4px; font-size:0.75rem;">DISABLED</span>`;
+      if (disabledView) disabledView.style.display = "block";
+      if (enrollView) enrollView.style.display = "none";
+      if (enabledView) enabledView.style.display = "none";
+    }
+  } catch (err) {
+    heading.textContent = "Unable to check 2FA status";
+    sub.textContent = err.message || "Failed to load MFA status.";
+  }
+}
+
+const startMfaEnrollBtn = document.getElementById("startMfaEnrollBtn");
+const cancelMfaEnrollBtn = document.getElementById("cancelMfaEnrollBtn");
+const confirmMfaEnrollBtn = document.getElementById("confirmMfaEnrollBtn");
+const disableMfaBtn = document.getElementById("disableMfaBtn");
+const mfaVerifyCodeInput = document.getElementById("mfaVerifyCodeInput");
+
+if (startMfaEnrollBtn) {
+  startMfaEnrollBtn.addEventListener("click", async () => {
+    startMfaEnrollBtn.disabled = true;
+    startMfaEnrollBtn.textContent = "Generating QR Code…";
+    try {
+      const res = await api("/auth/mfa/enroll", { method: "POST" });
+      currentEnrollmentFactorId = res.id;
+
+      const disabledView = document.getElementById("mfaDisabledView");
+      const enrollView = document.getElementById("mfaEnrollView");
+      const qrContainer = document.getElementById("mfaQrContainer");
+      const secretCode = document.getElementById("mfaSecretCode");
+
+      if (qrContainer && res.totp?.qr_code) {
+        if (res.totp.qr_code.startsWith("data:image/svg+xml")) {
+          qrContainer.innerHTML = `<img src="${res.totp.qr_code}" alt="2FA QR Code" style="width:200px; height:200px;">`;
+        } else {
+          qrContainer.innerHTML = res.totp.qr_code;
+        }
+      }
+
+      if (secretCode && res.totp?.secret) {
+        secretCode.textContent = res.totp.secret;
+      }
+
+      if (disabledView) disabledView.style.display = "none";
+      if (enrollView) enrollView.style.display = "block";
+      if (mfaVerifyCodeInput) {
+        mfaVerifyCodeInput.value = "";
+        mfaVerifyCodeInput.focus();
+      }
+    } catch (err) {
+      showToast(err.message || "Failed to start 2FA enrollment.", "error");
+    } finally {
+      startMfaEnrollBtn.disabled = false;
+      startMfaEnrollBtn.textContent = "Set Up Two-Factor Authentication";
+    }
+  });
+}
+
+if (cancelMfaEnrollBtn) {
+  cancelMfaEnrollBtn.addEventListener("click", () => {
+    const disabledView = document.getElementById("mfaDisabledView");
+    const enrollView = document.getElementById("mfaEnrollView");
+    if (disabledView) disabledView.style.display = "block";
+    if (enrollView) enrollView.style.display = "none";
+  });
+}
+
+if (confirmMfaEnrollBtn) {
+  confirmMfaEnrollBtn.addEventListener("click", async () => {
+    const code = mfaVerifyCodeInput ? mfaVerifyCodeInput.value.trim() : "";
+    if (!code || code.length !== 6) {
+      showToast("Please enter the 6-digit code from your app.", "error");
+      return;
+    }
+
+    confirmMfaEnrollBtn.disabled = true;
+    confirmMfaEnrollBtn.textContent = "Activating…";
+    try {
+      const res = await api("/auth/mfa/confirm-enrollment", {
+        method: "POST",
+        body: {
+          factor_id: currentEnrollmentFactorId,
+          code: code,
+        },
+      });
+
+      if (res.access_token) {
+        localStorage.setItem("token", res.access_token);
+      }
+
+      showToast("Two-Factor Authentication activated successfully!", "success");
+      await loadMfaStatus();
+    } catch (err) {
+      showToast(err.message || "Invalid verification code.", "error");
+    } finally {
+      confirmMfaEnrollBtn.disabled = false;
+      confirmMfaEnrollBtn.textContent = "Confirm & Activate";
+    }
+  });
+}
+
+if (disableMfaBtn) {
+  disableMfaBtn.addEventListener("click", async () => {
+    if (!confirm("Are you sure you want to disable Two-Factor Authentication?")) return;
+
+    disableMfaBtn.disabled = true;
+    disableMfaBtn.textContent = "Disabling…";
+    try {
+      await api("/auth/mfa/unenroll", { method: "POST" });
+      showToast("Two-Factor Authentication has been disabled.", "success");
+      await loadMfaStatus();
+    } catch (err) {
+      showToast(err.message || "Failed to disable 2FA.", "error");
+    } finally {
+      disableMfaBtn.disabled = false;
+      disableMfaBtn.textContent = "Disable Two-Factor Authentication";
+    }
+  });
+}
 
 if (renameProjectForm) {
   renameProjectForm.addEventListener("submit", async (e) => {
