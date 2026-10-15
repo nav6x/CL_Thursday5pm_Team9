@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g
 from config import supabase, maybe_one   
 from auth_utils import login_required, require_role
+from notifications_utils import create_notifications, display_name, project_name
 
 projects_bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 
@@ -160,6 +161,18 @@ def add_member(project_id):
     except Exception:
         pass
 
+    # Tell the new member they now have access to this project.
+    try:
+        actor = display_name(g.user.id)
+        pname = project_name(project_id)
+        create_notifications(
+            [target_id], g.user.id, "project_member_added",
+            f'{actor} added you to "{pname}" as {display_role}',
+            project_id=project_id,
+        )
+    except Exception:
+        pass
+
     return jsonify({"message": "Member added", "role": db_role, "agile_role": display_role}), 201
 
 
@@ -168,6 +181,7 @@ def add_member(project_id):
 @require_role("leader")
 def add_all_members(project_id):
     all_users = supabase.table("profiles").select("id").execute().data or []
+    newly_added = []
     for u in all_users:
         existing = maybe_one(   
             supabase.table("project_members")
@@ -181,6 +195,19 @@ def add_all_members(project_id):
                 "user_id": u["id"],
                 "role": "developer",
             }).execute()
+            newly_added.append(u["id"])
+
+    if newly_added:
+        try:
+            actor = display_name(g.user.id)
+            pname = project_name(project_id)
+            create_notifications(
+                newly_added, g.user.id, "project_member_added",
+                f'{actor} added you to "{pname}" as Developer',
+                project_id=project_id,
+            )
+        except Exception:
+            pass
 
     return jsonify({"message": "All workspace users added to project"}), 200
 
@@ -241,6 +268,17 @@ def update_member(project_id, user_id):
                 supabase.table("profiles").update({"full_name": new_name}).eq("id", user_id).execute()
             except Exception:
                 pass
+
+    try:
+        actor = display_name(g.user.id)
+        pname = project_name(project_id)
+        create_notifications(
+            [user_id], g.user.id, "role_changed",
+            f'{actor} changed your role in "{pname}" to {display_role}',
+            project_id=project_id,
+        )
+    except Exception:
+        pass
 
     return jsonify({"role": db_role, "agile_role": display_role}), 200
 

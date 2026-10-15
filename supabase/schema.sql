@@ -51,6 +51,21 @@ CREATE TABLE IF NOT EXISTS public.task_assignees (
     PRIMARY KEY (task_id, user_id)
 );
 
--- 7. Grant Permissions to service_role and authenticated users
+-- 7. Notifications Table
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+    task_id UUID REFERENCES public.tasks(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON public.notifications (user_id, created_at DESC);
+
+-- 8. Grant Permissions to service_role and authenticated users
 GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;

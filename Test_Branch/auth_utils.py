@@ -1,249 +1,79 @@
-from flask import Blueprint, request, jsonify
-from config import supabase, supabase_auth
-from auth_utils import login_required
-
-auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
-
-# Expects a `profiles` table with columns: id (uuid, matches auth.users.id),
-# full_name (text), email (text). Adjust the .insert() call below if your
-# column names differ.
+from functools import wraps
+from flask import request, jsonify, g
+from config import supabase, supabase_auth, maybe_one
 
 
-@auth_bp.route("/signup", methods=["POST"])
-def signup():
-    body = request.get_json(force=True)
-    email = body.get("email", "").strip().lower()
-    password = body.get("password", "")
-    full_name = body.get("full_name", "").strip()
+def login_required(f):
+    """Verifies the Supabase JWT sent from the frontend and attaches
+    the authenticated user to `g.user` for the route to use."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
-    if not email or not password or not full_name:
-        return jsonify({"error": "email, password, and full_name are required"}), 400
-
-    try:
-        result = supabase_auth.auth.sign_up({"email": email, "password": password})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-    if result.user is None:
-        return jsonify({"error": "Signup failed"}), 400
-
-    # Mirror the new user into our own profiles table so we can join
-    # on it elsewhere (project_members, tasks.created_by, etc.)
-    try:
-        supabase.table("profiles").insert({
-            "id": result.user.id,
-            "full_name": full_name,
-            "email": email,
-        }).execute()
-    except Exception:
-        pass
-
-    return jsonify({
-        "message": "Account created! Please check your email and click the confirmation link before logging in.",
-        "user_id": result.user.id,
-    }), 201
-
-
-@auth_bp.route("/login", methods=["POST"])
-def login():
-    body = request.get_json(force=True)
-    email = body.get("email", "").strip().lower()
-    password = body.get("password", "")
-
-    try:
-        result = supabase_auth.auth.sign_in_with_password({
-            "email": email,
-            "password": password,
-        })
-    except Exception as e:
-        error_msg = str(e)
-        if "email not confirmed" in error_msg.lower():
-            return jsonify({
-                "error": "Email not confirmed. Please check your inbox and verify your email before logging in."
-            }), 401
-        return jsonify({"error": "Invalid email or password"}), 401
-
-    # Check if user has an active TOTP Two-Factor Authentication factor
-    factors = getattr(result.user, "factors", None)
-    if not factors:
+        token = auth_header.split(" ", 1)[1]
         try:
-            admin_user = supabase.auth.admin.get_user_by_id(result.user.id)
-            factors = getattr(admin_user.user, "factors", None) or []
+            user_response = supabase_auth.auth.get_user(token)
+            g.user = user_response.user
+            if g.user is None:
+                raise ValueError("No user on token")
         except Exception:
-            factors = []
+            return jsonify({"error": "Invalid or expired session"}), 401
 
-    verified_mfa = [
-        f for f in factors
-        if (getattr(f, "status", None) == "verified" or (isinstance(f, dict) and f.get("status") == "verified"))
-        and (getattr(f, "factor_type", None) == "totp" or (isinstance(f, dict) and f.get("factor_type") == "totp"))
-    ]
-
-    if verified_mfa:
-        factor_id = verified_mfa[0].id if hasattr(verified_mfa[0], "id") else verified_mfa[0]["id"]
-        return jsonify({
-            "mfa_required": True,
-            "factor_id": factor_id,
-            "temp_token": result.session.access_token,
-            "user": {"id": result.user.id, "email": result.user.email},
-        }), 200
-
-    return jsonify({
-        "access_token": result.session.access_token,
-        "user": {"id": result.user.id, "email": result.user.email},
-    }), 200
+        return f(*args, **kwargs)
+    return wrapper
 
 
-@auth_bp.route("/mfa/verify-login", methods=["POST"])
-def verify_mfa_login():
-    """Verifies a 6-digit TOTP code during the login flow and returns the full session."""
-    body = request.get_json(force=True)
-    temp_token = body.get("temp_token")
-    factor_id = body.get("factor_id")
-    code = body.get("code", "").strip()
+def get_role_in_project(user_id, project_id):
+    """Looks up the caller's role for a specific project. Returns
+    None if they aren't a member at all (treated as no access)."""
+    result = maybe_one(
+        supabase.table("project_members")
+        .select("role")
+        .eq("user_id", user_id)
+        .eq("project_id", project_id)
+    )
+    if not result:
+        # Fallback check if user is the project creator
+        try:
+            proj = maybe_one(supabase.table("projects").select("created_by").eq("id", project_id))
+            if proj and proj.get("created_by") == user_id:
+                return "leader"
+        except Exception:
+            pass
+        return None
 
-    if not temp_token or not factor_id or not code:
-        return jsonify({"error": "temp_token, factor_id, and code are required"}), 400
-
-    try:
-        challenge_res = supabase_auth.auth._request(
-            "POST",
-            f"factors/{factor_id}/challenge",
-            jwt=temp_token,
-        )
-        challenge_id = challenge_res.json().get("id")
-
-        verify_res = supabase_auth.auth._request(
-            "POST",
-            f"factors/{factor_id}/verify",
-            jwt=temp_token,
-            body={"challenge_id": challenge_id, "code": code},
-        )
-        data = verify_res.json()
-        if "access_token" not in data:
-            return jsonify({"error": "Invalid verification code. Please try again."}), 401
-
-        return jsonify({
-            "access_token": data["access_token"],
-            "user": data.get("user", {}),
-        }), 200
-    except Exception:
-        return jsonify({"error": "Invalid verification code. Please try again."}), 401
+    role = result.get("role")
+    if role in ("leader", "project_leader", "scrum_master", "product_owner"):
+        return "leader"
+    return role or "developer"
 
 
-@auth_bp.route("/mfa/enroll", methods=["POST"])
-@login_required
-def enroll_mfa():
-    """Generates a new TOTP factor (QR code SVG & secret key) for the authenticated user."""
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.split(" ", 1)[1]
+def require_role(*allowed_roles):
+    """Route decorator for project-scoped endpoints. Expects the
+    route to accept a `project_id` URL parameter. Use like:
 
-    try:
-        res = supabase_auth.auth._request(
-            "POST",
-            "factors",
-            jwt=token,
-            body={"factor_type": "totp", "issuer": "Scrumptious", "friendly_name": "Authenticator App"},
-        )
-        data = res.json()
-        return jsonify(data), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        @require_role("leader")
+        def delete_column(project_id, column_id): ...
 
+    Must be applied AFTER @login_required (i.e. listed below it),
+    so g.user already exists when this runs.
+    """
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            project_id = kwargs.get("project_id") or request.view_args.get("project_id")
+            if not project_id:
+                return jsonify({"error": "project_id is required for this action"}), 400
 
-@auth_bp.route("/mfa/confirm-enrollment", methods=["POST"])
-@login_required
-def confirm_mfa_enrollment():
-    """Validates the first 6-digit code after scanning to activate 2FA on the account."""
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.split(" ", 1)[1]
-    body = request.get_json(force=True)
-    factor_id = body.get("factor_id")
-    code = body.get("code", "").strip()
+            role = get_role_in_project(g.user.id, project_id)
+            if role is None:
+                return jsonify({"error": "You are not a member of this project"}), 403
+            if role not in allowed_roles:
+                return jsonify({"error": f"This action requires role: {', '.join(allowed_roles)}"}), 403
 
-    if not factor_id or not code:
-        return jsonify({"error": "factor_id and code are required"}), 400
-
-    try:
-        challenge_res = supabase_auth.auth._request(
-            "POST",
-            f"factors/{factor_id}/challenge",
-            jwt=token,
-        )
-        challenge_id = challenge_res.json().get("id")
-
-        verify_res = supabase_auth.auth._request(
-            "POST",
-            f"factors/{factor_id}/verify",
-            jwt=token,
-            body={"challenge_id": challenge_id, "code": code},
-        )
-        data = verify_res.json()
-        return jsonify({
-            "message": "Two-factor authentication successfully enabled!",
-            "access_token": data.get("access_token", token),
-        }), 200
-    except Exception:
-        return jsonify({"error": "Invalid code. Please check your authenticator app and try again."}), 400
-
-
-@auth_bp.route("/mfa/unenroll", methods=["POST"])
-@login_required
-def unenroll_mfa():
-    """Disables Two-Factor Authentication by unenrolling the TOTP factor."""
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.split(" ", 1)[1]
-    body = request.get_json(force=True) if request.data else {}
-    factor_id = body.get("factor_id")
-
-    try:
-        if not factor_id:
-            user_data = supabase_auth.auth._request("GET", "user", jwt=token).json()
-            factors = user_data.get("factors", [])
-            totp = [f for f in factors if f.get("factor_type") == "totp" and f.get("status") == "verified"]
-            if not totp:
-                return jsonify({"message": "Two-factor authentication is not enabled"}), 200
-            factor_id = totp[0]["id"]
-
-        supabase_auth.auth._request("DELETE", f"factors/{factor_id}", jwt=token)
-        return jsonify({"message": "Two-factor authentication disabled"}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-
-@auth_bp.route("/mfa/status", methods=["GET"])
-@login_required
-def mfa_status():
-    """Checks whether 2FA is currently active for the logged in user."""
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.split(" ", 1)[1]
-    try:
-        user_data = supabase_auth.auth._request("GET", "user", jwt=token).json()
-        factors = user_data.get("factors", [])
-        verified_totp = [f for f in factors if f.get("factor_type") == "totp" and f.get("status") == "verified"]
-        return jsonify({
-            "enabled": len(verified_totp) > 0,
-            "factor_id": verified_totp[0]["id"] if verified_totp else None,
-        }), 200
-    except Exception as e:
-        return jsonify({"enabled": False, "error": str(e)}), 200
-
-
-@auth_bp.route("/resend-verification", methods=["POST"])
-def resend_verification():
-    body = request.get_json(force=True)
-    email = body.get("email", "").strip().lower()
-    if not email:
-        return jsonify({"error": "email is required"}), 400
-
-    try:
-        supabase_auth.auth.resend({"type": "signup", "email": email})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-    return jsonify({"message": "Verification email resent. Please check your inbox."}), 200
-
-
-@auth_bp.route("/users", methods=["GET"])
-def list_users():
-    result = supabase.table("profiles").select("id, full_name, email").execute()
-    return jsonify(result.data), 200
+            g.role = role
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator

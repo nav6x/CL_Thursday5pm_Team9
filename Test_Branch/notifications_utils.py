@@ -68,15 +68,18 @@ def create_notifications(user_ids, actor_id, type_, message, project_id=None, ta
 
 
 def project_member_ids(project_id):
-    rows = (
-        supabase.table("project_members")
-        .select("user_id")
-        .eq("project_id", project_id)
-        .execute()
-        .data
-        or []
-    )
-    return [r["user_id"] for r in rows]
+    try:
+        rows = (
+            supabase.table("project_members")
+            .select("user_id")
+            .eq("project_id", project_id)
+            .execute()
+            .data
+            or []
+        )
+        return [r["user_id"] for r in rows]
+    except Exception:
+        return []
 
 
 def notify_project(project_id, actor_id, type_, message, task_id=None, exclude=()):
