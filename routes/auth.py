@@ -246,4 +246,34 @@ def resend_verification():
 @auth_bp.route("/users", methods=["GET"])
 def list_users():
     result = supabase.table("profiles").select("id, full_name, email").execute()
-    return jsonify(result.data), 200
+    users = result.data or []
+    try:
+        memberships_res = (
+            supabase.table("project_members")
+            .select("user_id, role, projects(id, name)")
+            .execute()
+        )
+        user_projects = {}
+        for m in (memberships_res.data or []):
+            uid = m.get("user_id")
+            proj = m.get("projects")
+            if not uid or not proj:
+                continue
+            if uid not in user_projects:
+                user_projects[uid] = []
+            db_role = m.get("role", "developer")
+            user_projects[uid].append({
+                "id": proj.get("id"),
+                "name": proj.get("name"),
+                "role": db_role,
+            })
+        for u in users:
+            uid = u.get("id")
+            projs = user_projects.get(uid, [])
+            u["project_count"] = len(projs)
+            u["projects"] = projs
+    except Exception:
+        for u in users:
+            u.setdefault("project_count", 0)
+            u.setdefault("projects", [])
+    return jsonify(users), 200

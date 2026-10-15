@@ -27,6 +27,12 @@
     <div class="topbar-project">
       <h1 id="projectName">Loading…<span class="role-badge" id="roleBadge"></span></h1>
       <select id="projectSelect" class="project-select" style="display:none;"></select>
+      <button class="btn-secondary" id="allProjectsBtn" title="View all projects and team access">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle;">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        Projects (<span id="totalProjectsBadge">0</span>)
+      </button>
       <button class="btn-secondary" id="newProjectBtn">+ New Project</button>
     </div>
 
@@ -192,6 +198,41 @@
     </div>
   </div>
 
+  <!-- All Projects & Member Access Modal -->
+  <div class="modal-overlay" id="allProjectsModalOverlay">
+    <div class="modal modal-lg" style="max-width:760px; width:92%; max-height:88vh; display:flex; flex-direction:column;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem; border-bottom:1px solid var(--border); padding-bottom:0.75rem;">
+        <div>
+          <h2 style="margin:0 0 0.25rem 0; font-size:1.25rem; display:flex; align-items:center; gap:0.5rem;">
+            <span>Projects & Access Overview</span>
+            <span class="projects-badge-pill" id="modalTotalProjectsPill">0 Total</span>
+          </h2>
+          <p style="margin:0; font-size:0.85rem; color:var(--ink-muted);">
+            Workspace directory of all projects and who has access to them.
+          </p>
+        </div>
+        <button type="button" class="btn-ghost" id="closeAllProjectsModalTop" aria-label="Close" style="font-size:1.4rem; line-height:1; padding:0.2rem 0.5rem; color:var(--ink-muted);">&times;</button>
+      </div>
+
+      <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap;">
+        <input type="text" id="projectsFilterInput" class="filter-input" placeholder="Search projects or team members…" style="flex:1; min-width:200px;">
+        <select id="projectsAccessFilter" class="filter-input" style="width:auto; min-width:140px;">
+          <option value="all">All Projects</option>
+          <option value="mine">My Projects</option>
+        </select>
+        <button type="button" class="btn-primary" id="modalNewProjectBtn" style="width:auto; padding:0.4rem 0.8rem; font-size:0.85rem;">+ New Project</button>
+      </div>
+
+      <div class="projects-overview-container" id="projectsOverviewContainer" style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:0.75rem; padding-right:4px;">
+        <div style="font-size:0.85rem; color:var(--ink-muted); padding:1.5rem; text-align:center;">Loading projects…</div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:1rem; border-top:1px solid var(--border); padding-top:0.75rem; display:flex; justify-content:flex-end;">
+        <button type="button" class="btn-secondary" id="closeAllProjectsModalBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="settingsModalOverlay">
     <div class="modal settings-modal">
       <h2>Project Settings</h2>
@@ -253,7 +294,10 @@
           <div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">Loading members…</div>
         </div>
 
-        <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted); margin-top:1rem; display:block;">Workspace Directory</label>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1.25rem;">
+          <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted);">Workspace Directory & Project Access</label>
+          <span style="font-size:0.75rem; color:var(--ink-muted);">Total projects per user</span>
+        </div>
         <div class="member-list" id="workspaceUsersContainer">
           <div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">Loading workspace users…</div>
         </div>
