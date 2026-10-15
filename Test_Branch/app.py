@@ -1,10 +1,11 @@
-from flask import Flask
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 
 from routes.auth import auth_bp
 from routes.projects import projects_bp
 from routes.columns import columns_bp
 from routes.tasks import tasks_bp
+from routes.notifications import notifications_bp
 
 app = Flask(__name__)
 
@@ -16,6 +17,18 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(projects_bp)
 app.register_blueprint(columns_bp)
 app.register_blueprint(tasks_bp)
+app.register_blueprint(notifications_bp)
+
+
+@app.route("/")
+@app.route("/index.html")
+def serve_index():
+    return send_from_directory(".", "index.html")
+
+
+@app.route("/board.html")
+def serve_board():
+    return send_from_directory(".", "board.html")
 
 
 @app.route("/api/health", methods=["GET"])
@@ -34,7 +47,9 @@ def not_found(e):
 
 @app.errorhandler(500)
 def server_error(e):
-    return {"error": "Something went wrong on the server"}, 500
+    original_err = getattr(e, "original_exception", e)
+    msg = str(original_err) if original_err and str(original_err) else "Something went wrong on the server"
+    return {"error": msg}, 500
 
 
 if __name__ == "__main__":
