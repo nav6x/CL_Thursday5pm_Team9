@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g
-from Test_Branch.config import supabase
-from Test_Branch.auth_utils import login_required, get_role_in_project
+from config import supabase, maybe_one
+from auth_utils import login_required, get_role_in_project
+from notifications_utils import create_notifications, notify_project, diff_description, display_name, project_name
 
 tasks_bp = Blueprint("tasks", __name__, url_prefix="/api/projects/<project_id>/tasks")
 
@@ -12,21 +13,17 @@ tasks_bp = Blueprint("tasks", __name__, url_prefix="/api/projects/<project_id>/t
 
 
 def _is_assignee(task_id, user_id):
-    result = (
+    result = maybe_one(
         supabase.table("task_assignees")
         .select("user_id")
         .eq("task_id", task_id)
         .eq("user_id", user_id)
-        .maybe_single()
-        .execute()
     )
-    return result.data is not None
+    return result is not None
 
 
 def _get_task_or_404(task_id):
-    result = supabase.table("tasks").select("*").eq("id", task_id).maybe_single().execute()
-    return result.data
-
+    return maybe_one(supabase.table("tasks").select("*").eq("id", task_id))
 
 @tasks_bp.route("", methods=["GET"])
 @login_required
@@ -42,8 +39,9 @@ def list_tasks(project_id):
         .execute()
     )
     assignees_by_task = {}
-    for row in assignee_rows.data:
-        assignees_by_task.setdefault(row["task_id"], []).append(row["profiles"])
+    for row in (assignee_rows.data or []):
+        if row.get("profiles"):
+            assignees_by_task.setdefault(row["task_id"], []).append(row["profiles"])
 
     for task in tasks:
         task["assignees"] = assignees_by_task.get(task["id"], [])
@@ -81,10 +79,28 @@ def create_task(project_id):
     }).execute().data[0]
 
     assignee_ids = body.get("assignee_ids", [])
-    if assignee_ids:
+    valid_uids = list(dict.fromkeys([uid for uid in assignee_ids if uid]))
+    if valid_uids:
         supabase.table("task_assignees").insert([
-            {"task_id": task["id"], "user_id": uid} for uid in assignee_ids
+            {"task_id": task["id"], "user_id": uid} for uid in valid_uids
         ]).execute()
+
+    try:
+        actor = display_name(g.user.id)
+        pname = project_name(project_id)
+        notify_project(
+            project_id, g.user.id, "task_created",
+            f'{actor} created task "{name}" in "{pname}"',
+            task_id=task["id"]
+        )
+        if valid_uids:
+            create_notifications(
+                valid_uids, g.user.id, "task_assigned",
+                f'{actor} assigned you to "{name}"',
+                project_id=project_id, task_id=task["id"]
+            )
+    except Exception:
+        pass
 
     return jsonify(task), 201
 
@@ -133,6 +149,39 @@ def update_task(project_id, task_id):
         return jsonify({"error": "Nothing to update"}), 400
 
     result = supabase.table("tasks").update(updates).eq("id", task_id).execute()
+
+    try:
+        actor = display_name(g.user.id)
+        task_name = task.get("name") or updates.get("name") or "a task"
+        if "column_id" in updates and updates["column_id"] != task.get("column_id"):
+            notify_project(
+                project_id, g.user.id, "task_moved",
+                f'{actor} moved "{task_name}"',
+                task_id=task_id
+            )
+        if "description" in updates:
+            content_changed, new_comments = diff_description(task.get("description", ""), updates["description"])
+            for comment in new_comments:
+                notify_project(
+                    project_id, g.user.id, "task_commented",
+                    f'{actor} commented on "{task_name}"',
+                    task_id=task_id
+                )
+            if content_changed:
+                notify_project(
+                    project_id, g.user.id, "task_updated",
+                    f'{actor} updated "{task_name}"',
+                    task_id=task_id
+                )
+        elif any(k in updates for k in ("name", "priority", "story_points")):
+            notify_project(
+                project_id, g.user.id, "task_updated",
+                f'{actor} updated "{task_name}"',
+                task_id=task_id
+            )
+    except Exception:
+        pass
+
     return jsonify(result.data[0]), 200
 
 
@@ -144,6 +193,18 @@ def delete_task(project_id, task_id):
         return jsonify({"error": "Only a Project Leader can delete tasks"}), 403
 
     supabase.table("tasks").delete().eq("id", task_id).execute()
+
+    try:
+        if task:
+            actor = display_name(g.user.id)
+            notify_project(
+                project_id, g.user.id, "task_deleted",
+                f'{actor} deleted task "{task.get("name")}"',
+                task_id=task_id
+            )
+    except Exception:
+        pass
+
     return jsonify({"message": "Task deleted"}), 200
 
 
@@ -158,11 +219,15 @@ def set_assignees(project_id, task_id):
 
     body = request.get_json(force=True)
     assignee_ids = body.get("assignee_ids", [])
+    valid_uids = list(dict.fromkeys([uid for uid in assignee_ids if uid]))
 
-    supabase.table("task_assignees").delete().eq("task_id", task_id).execute()
-    if assignee_ids:
-        supabase.table("task_assignees").insert([
-            {"task_id": task_id, "user_id": uid} for uid in assignee_ids
-        ]).execute()
+    try:
+        supabase.table("task_assignees").delete().eq("task_id", task_id).execute()
+        if valid_uids:
+            supabase.table("task_assignees").insert([
+                {"task_id": task_id, "user_id": uid} for uid in valid_uids
+            ]).execute()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
     return jsonify({"message": "Assignees updated"}), 200

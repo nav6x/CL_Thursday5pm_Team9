@@ -57,6 +57,18 @@ const memberListContainer = document.getElementById("memberListContainer");
 const workspaceUsersContainer = document.getElementById("workspaceUsersContainer");
 const addAllMembersBtn = document.getElementById("addAllMembersBtn");
 
+const allProjectsBtn = document.getElementById("allProjectsBtn");
+const allProjectsModalOverlay = document.getElementById("allProjectsModalOverlay");
+const closeAllProjectsModalTop = document.getElementById("closeAllProjectsModalTop");
+const closeAllProjectsModalBtn = document.getElementById("closeAllProjectsModalBtn");
+const projectsFilterInput = document.getElementById("projectsFilterInput");
+const projectsAccessFilter = document.getElementById("projectsAccessFilter");
+const modalNewProjectBtn = document.getElementById("modalNewProjectBtn");
+const projectsOverviewContainer = document.getElementById("projectsOverviewContainer");
+const totalProjectsBadge = document.getElementById("totalProjectsBadge");
+const modalTotalProjectsPill = document.getElementById("modalTotalProjectsPill");
+let allProjectsOverviewData = null;
+
 const tagChipsContainer = document.getElementById("tagChipsContainer");
 const customTagInput = document.getElementById("customTagInput");
 const addCustomTagBtn = document.getElementById("addCustomTagBtn");
@@ -177,6 +189,7 @@ async function init(preferredProjectId = null) {
     cachedTasks = tasks;
 
     await renderBoard();
+    updateProjectsOverviewBadge();
   } catch (err) {
     boardEl.innerHTML = `
       <div class="board-empty">
@@ -967,6 +980,7 @@ if (settingsBtn) {
     if (renameProjectInput) renameProjectInput.value = currentProject?.name || "";
     await refreshMemberList();
     updateActiveThemeSwatches();
+    loadMfaStatus();
     if (settingsModalOverlay) settingsModalOverlay.classList.add("open");
   });
 }
@@ -974,6 +988,165 @@ if (settingsBtn) {
 if (closeSettingsBtn) {
   closeSettingsBtn.addEventListener("click", () => {
     if (settingsModalOverlay) settingsModalOverlay.classList.remove("open");
+  });
+}
+
+async function updateProjectsOverviewBadge() {
+  try {
+    const data = await api("/projects/overview");
+    allProjectsOverviewData = data;
+    if (totalProjectsBadge) totalProjectsBadge.textContent = data.total_projects || 0;
+    if (modalTotalProjectsPill) modalTotalProjectsPill.textContent = `${data.total_projects || 0} Total`;
+  } catch (e) {
+    // Non-critical badge update failure can be safely ignored
+  }
+}
+
+async function loadProjectsOverview() {
+  if (!projectsOverviewContainer) return;
+  projectsOverviewContainer.innerHTML = `<div style="font-size:0.85rem; color:var(--ink-muted); padding:1.5rem; text-align:center;">Loading projects…</div>`;
+  try {
+    const data = await api("/projects/overview");
+    allProjectsOverviewData = data;
+    if (totalProjectsBadge) totalProjectsBadge.textContent = data.total_projects || 0;
+    if (modalTotalProjectsPill) modalTotalProjectsPill.textContent = `${data.total_projects || 0} Total`;
+    renderProjectsOverview();
+  } catch (err) {
+    projectsOverviewContainer.innerHTML = `<div style="font-size:0.85rem; color:#DC2626; padding:1.5rem; text-align:center;">Failed to load projects: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderProjectsOverview() {
+  if (!projectsOverviewContainer || !allProjectsOverviewData) return;
+  const filterText = (projectsFilterInput ? projectsFilterInput.value : "").trim().toLowerCase();
+  const filterScope = projectsAccessFilter ? projectsAccessFilter.value : "all";
+
+  let list = allProjectsOverviewData.projects || [];
+  if (filterScope === "mine") {
+    list = list.filter(p => p.is_member);
+  }
+  if (filterText) {
+    list = list.filter(p => {
+      const matchName = (p.name || "").toLowerCase().includes(filterText);
+      const matchMember = (p.members || []).some(m =>
+        (m.full_name || "").toLowerCase().includes(filterText) ||
+        (m.email || "").toLowerCase().includes(filterText) ||
+        (m.agile_role || "").toLowerCase().includes(filterText)
+      );
+      return matchName || matchMember;
+    });
+  }
+
+  if (list.length === 0) {
+    projectsOverviewContainer.innerHTML = `<div style="font-size:0.85rem; color:var(--ink-muted); padding:2rem; text-align:center; background:var(--lane); border-radius:8px;">No projects found matching your filter.</div>`;
+    return;
+  }
+
+  projectsOverviewContainer.innerHTML = list.map(p => {
+    const isCurrent = currentProject && p.id === currentProject.id;
+    const dateFormatted = p.created_at ? new Date(p.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
+    const memberCount = p.member_count || (p.members ? p.members.length : 0);
+    const roleBadgeHtml = p.is_member
+      ? `<span class="role-badge ${getRoleBadgeClass(p.my_agile_role || p.my_role)}">${escapeHtml(p.my_agile_role || "Member")}</span>`
+      : `<span class="role-badge" style="opacity:0.65;">No Access</span>`;
+
+    const switchBtnHtml = isCurrent
+      ? `<span style="font-size:0.75rem; font-weight:700; color:var(--accent); background:var(--lane); border:1px solid var(--border); padding:0.2rem 0.55rem; border-radius:999px;">Active Project</span>`
+      : p.is_member
+        ? `<button type="button" class="btn-secondary" style="font-size:0.8rem; padding:0.25rem 0.65rem;" data-switch-project="${p.id}">Switch to Project</button>`
+        : `<span style="font-size:0.75rem; color:var(--ink-muted); font-style:italic;">Access Restricted</span>`;
+
+    const memberChipsHtml = (p.members && p.members.length > 0)
+      ? p.members.map(m => {
+          const roleClass = getRoleBadgeClass(m.agile_role || m.role);
+          const isMe = m.user_id === user?.id;
+          return `
+            <div class="member-access-chip" title="${escapeHtml(m.email)}">
+              <span class="chip-name">${escapeHtml(m.full_name || m.email)}${isMe ? " (You)" : ""}</span>
+              <span class="role-badge ${roleClass}" style="font-size:0.65rem; padding:0.05rem 0.4rem;">${escapeHtml(m.agile_role || m.role)}</span>
+            </div>
+          `;
+        }).join("")
+      : `<span style="font-size:0.75rem; color:var(--ink-muted); font-style:italic;">No members assigned</span>`;
+
+    return `
+      <div class="projects-overview-card ${isCurrent ? "is-current" : ""}">
+        <div class="project-card-header">
+          <div class="project-card-title">
+            <span>${escapeHtml(p.name)}</span>
+            ${roleBadgeHtml}
+          </div>
+          <div>${switchBtnHtml}</div>
+        </div>
+        <div class="project-card-meta">
+          <span>👥 <strong>${memberCount}</strong> ${memberCount === 1 ? "Member" : "Members"} with access</span>
+          ${dateFormatted ? `<span>📅 Created ${escapeHtml(dateFormatted)}</span>` : ""}
+        </div>
+        <div class="project-members-access-section">
+          <div class="project-members-access-title">
+            <span>Who has access</span>
+            <span>${memberCount} User${memberCount === 1 ? "" : "s"}</span>
+          </div>
+          <div class="project-members-chips">
+            ${memberChipsHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  projectsOverviewContainer.querySelectorAll("[data-switch-project]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const pid = e.currentTarget.dataset.switchProject;
+      if (allProjectsModalOverlay) allProjectsModalOverlay.classList.remove("open");
+      await init(pid);
+    });
+  });
+}
+
+if (allProjectsBtn) {
+  allProjectsBtn.addEventListener("click", async () => {
+    if (allProjectsModalOverlay) allProjectsModalOverlay.classList.add("open");
+    await loadProjectsOverview();
+  });
+}
+
+if (closeAllProjectsModalTop) {
+  closeAllProjectsModalTop.addEventListener("click", () => {
+    if (allProjectsModalOverlay) allProjectsModalOverlay.classList.remove("open");
+  });
+}
+
+if (closeAllProjectsModalBtn) {
+  closeAllProjectsModalBtn.addEventListener("click", () => {
+    if (allProjectsModalOverlay) allProjectsModalOverlay.classList.remove("open");
+  });
+}
+
+if (allProjectsModalOverlay) {
+  allProjectsModalOverlay.addEventListener("click", (e) => {
+    if (e.target === allProjectsModalOverlay) {
+      allProjectsModalOverlay.classList.remove("open");
+    }
+  });
+}
+
+if (projectsFilterInput) {
+  projectsFilterInput.addEventListener("input", () => {
+    renderProjectsOverview();
+  });
+}
+
+if (projectsAccessFilter) {
+  projectsAccessFilter.addEventListener("change", () => {
+    renderProjectsOverview();
+  });
+}
+
+if (modalNewProjectBtn) {
+  modalNewProjectBtn.addEventListener("click", () => {
+    if (allProjectsModalOverlay) allProjectsModalOverlay.classList.remove("open");
+    if (newProjectBtn) newProjectBtn.click();
   });
 }
 
@@ -986,8 +1159,156 @@ document.querySelectorAll(".settings-tab-btn").forEach(btn => {
     const tabName = btn.dataset.tab;
     const targetPanel = document.getElementById(`tab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`);
     if (targetPanel) targetPanel.classList.add("active");
+    if (tabName === "security") {
+      loadMfaStatus();
+    }
   });
 });
+
+let currentEnrollmentFactorId = null;
+
+async function loadMfaStatus() {
+  const heading = document.getElementById("mfaStatusHeading");
+  const sub = document.getElementById("mfaStatusSub");
+  const badge = document.getElementById("mfaBadge");
+  const disabledView = document.getElementById("mfaDisabledView");
+  const enabledView = document.getElementById("mfaEnabledView");
+  const enrollView = document.getElementById("mfaEnrollView");
+
+  if (!heading) return;
+
+  try {
+    const res = await api("/auth/mfa/status");
+    if (res.enabled) {
+      heading.textContent = "Two-Factor Authentication is Active";
+      heading.style.color = "var(--ink-success, #059669)";
+      sub.textContent = "Your account is secured with an authenticator app.";
+      if (badge) badge.innerHTML = `<span style="background:#DCFCE7; color:#059669; font-weight:600; padding:4px 8px; border-radius:4px; font-size:0.75rem;">ENABLED</span>`;
+      if (disabledView) disabledView.style.display = "none";
+      if (enrollView) enrollView.style.display = "none";
+      if (enabledView) enabledView.style.display = "block";
+    } else {
+      heading.textContent = "Two-Factor Authentication is Off";
+      heading.style.color = "var(--ink-text)";
+      sub.textContent = "Add an extra layer of security using an authenticator app.";
+      if (badge) badge.innerHTML = `<span style="background:#F3F4F6; color:#6B7280; font-weight:600; padding:4px 8px; border-radius:4px; font-size:0.75rem;">DISABLED</span>`;
+      if (disabledView) disabledView.style.display = "block";
+      if (enrollView) enrollView.style.display = "none";
+      if (enabledView) enabledView.style.display = "none";
+    }
+  } catch (err) {
+    heading.textContent = "Unable to check 2FA status";
+    sub.textContent = err.message || "Failed to load MFA status.";
+  }
+}
+
+const startMfaEnrollBtn = document.getElementById("startMfaEnrollBtn");
+const cancelMfaEnrollBtn = document.getElementById("cancelMfaEnrollBtn");
+const confirmMfaEnrollBtn = document.getElementById("confirmMfaEnrollBtn");
+const disableMfaBtn = document.getElementById("disableMfaBtn");
+const mfaVerifyCodeInput = document.getElementById("mfaVerifyCodeInput");
+
+if (startMfaEnrollBtn) {
+  startMfaEnrollBtn.addEventListener("click", async () => {
+    startMfaEnrollBtn.disabled = true;
+    startMfaEnrollBtn.textContent = "Generating QR Code…";
+    try {
+      const res = await api("/auth/mfa/enroll", { method: "POST" });
+      currentEnrollmentFactorId = res.id;
+
+      const disabledView = document.getElementById("mfaDisabledView");
+      const enrollView = document.getElementById("mfaEnrollView");
+      const qrContainer = document.getElementById("mfaQrContainer");
+      const secretCode = document.getElementById("mfaSecretCode");
+
+      if (qrContainer && res.totp?.qr_code) {
+        if (res.totp.qr_code.startsWith("data:image/svg+xml")) {
+          qrContainer.innerHTML = `<img src="${res.totp.qr_code}" alt="2FA QR Code" style="width:200px; height:200px;">`;
+        } else {
+          qrContainer.innerHTML = res.totp.qr_code;
+        }
+      }
+
+      if (secretCode && res.totp?.secret) {
+        secretCode.textContent = res.totp.secret;
+      }
+
+      if (disabledView) disabledView.style.display = "none";
+      if (enrollView) enrollView.style.display = "block";
+      if (mfaVerifyCodeInput) {
+        mfaVerifyCodeInput.value = "";
+        mfaVerifyCodeInput.focus();
+      }
+    } catch (err) {
+      showToast(err.message || "Failed to start 2FA enrollment.", "error");
+    } finally {
+      startMfaEnrollBtn.disabled = false;
+      startMfaEnrollBtn.textContent = "Set Up Two-Factor Authentication";
+    }
+  });
+}
+
+if (cancelMfaEnrollBtn) {
+  cancelMfaEnrollBtn.addEventListener("click", () => {
+    const disabledView = document.getElementById("mfaDisabledView");
+    const enrollView = document.getElementById("mfaEnrollView");
+    if (disabledView) disabledView.style.display = "block";
+    if (enrollView) enrollView.style.display = "none";
+  });
+}
+
+if (confirmMfaEnrollBtn) {
+  confirmMfaEnrollBtn.addEventListener("click", async () => {
+    const code = mfaVerifyCodeInput ? mfaVerifyCodeInput.value.trim() : "";
+    if (!code || code.length !== 6) {
+      showToast("Please enter the 6-digit code from your app.", "error");
+      return;
+    }
+
+    confirmMfaEnrollBtn.disabled = true;
+    confirmMfaEnrollBtn.textContent = "Activating…";
+    try {
+      const res = await api("/auth/mfa/confirm-enrollment", {
+        method: "POST",
+        body: {
+          factor_id: currentEnrollmentFactorId,
+          code: code,
+        },
+      });
+
+      if (res.access_token) {
+        localStorage.setItem("token", res.access_token);
+      }
+
+      showToast("Two-Factor Authentication activated successfully!", "success");
+      await loadMfaStatus();
+    } catch (err) {
+      showToast(err.message || "Invalid verification code.", "error");
+    } finally {
+      confirmMfaEnrollBtn.disabled = false;
+      confirmMfaEnrollBtn.textContent = "Confirm & Activate";
+    }
+  });
+}
+
+if (disableMfaBtn) {
+  disableMfaBtn.addEventListener("click", async () => {
+    if (!confirm("Are you sure you want to disable Two-Factor Authentication?")) return;
+
+    disableMfaBtn.disabled = true;
+    disableMfaBtn.textContent = "Disabling…";
+    try {
+      await api("/auth/mfa/unenroll", { method: "POST" });
+      showToast("Two-Factor Authentication has been disabled.", "success");
+      await loadMfaStatus();
+    } catch (err) {
+      showToast(err.message || "Failed to disable 2FA.", "error");
+    } finally {
+      disableMfaBtn.disabled = false;
+      disableMfaBtn.textContent = "Disable Two-Factor Authentication";
+    }
+  });
+}
 
 if (renameProjectForm) {
   renameProjectForm.addEventListener("submit", async (e) => {
@@ -1130,20 +1451,34 @@ async function refreshMemberList() {
           const currentRoleName = memberMap.get(u.id);
           const isMe = u.id === user?.id;
           const cleanName = (u.full_name || "").split("[")[0].trim() || u.email;
+          const projectCount = typeof u.project_count === "number" ? u.project_count : (u.projects ? u.projects.length : 0);
+          const projectsList = u.projects || [];
+          const projectChipsHtml = projectsList.length > 0
+            ? projectsList.map(p => `<span class="user-project-chip" title="${escapeHtml(p.name)} (${escapeHtml(p.role || "member")})">${escapeHtml(p.name)}</span>`).join("")
+            : `<span style="font-size:0.72rem; color:var(--ink-muted); font-style:italic;">No projects assigned</span>`;
 
           return `
-            <div class="member-row">
-              <div class="member-info">
-                <span class="member-name">${escapeHtml(cleanName)} ${isMe ? "(You)" : ""}</span>
-                <span class="member-email">${escapeHtml(u.email)}</span>
+            <div class="member-row" style="flex-direction:column; align-items:stretch; gap:0.5rem;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
+                <div class="member-info">
+                  <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                    <span class="member-name">${escapeHtml(cleanName)} ${isMe ? "(You)" : ""}</span>
+                    <span class="user-project-count-badge">${projectCount} ${projectCount === 1 ? "Project" : "Projects"}</span>
+                  </div>
+                  <span class="member-email">${escapeHtml(u.email)}</span>
+                </div>
+                <div>
+                  ${inProject
+                    ? `<span class="role-badge ${getRoleBadgeClass(currentRoleName)}">${escapeHtml(currentRoleName)}</span>`
+                    : isLeaderLevel
+                      ? `<button type="button" class="btn-secondary" data-add-workspace-user-id="${u.id}" style="font-size:0.75rem; padding:0.25rem 0.6rem;">+ Add to Project</button>`
+                      : ""
+                  }
+                </div>
               </div>
-              <div>
-                ${inProject
-                  ? `<span class="role-badge ${getRoleBadgeClass(currentRoleName)}">${escapeHtml(currentRoleName)}</span>`
-                  : isLeaderLevel
-                    ? `<button type="button" class="btn-secondary" data-add-workspace-user-id="${u.id}" style="font-size:0.75rem; padding:0.25rem 0.6rem;">+ Add to Project</button>`
-                    : ""
-                }
+              <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; font-size:0.75rem; border-top:1px dashed var(--border); padding-top:0.35rem;">
+                <span style="font-weight:600; color:var(--ink-muted); font-size:0.7rem; text-transform:uppercase;">Access:</span>
+                <div class="user-projects-list" style="margin-top:0;">${projectChipsHtml}</div>
               </div>
             </div>
           `;

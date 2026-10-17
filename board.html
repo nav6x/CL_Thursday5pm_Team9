@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Scrumptious — Agile Board</title>
   <link rel="stylesheet" href="static/css/style.css">
+  <link rel="stylesheet" href="static/css/notifications.css">
+  <script>
+    try {
+      const theme = localStorage.getItem("scrumptious_theme") || "slate";
+      const accent = localStorage.getItem("scrumptious_accent") || "indigo";
+      document.documentElement.setAttribute("data-theme", theme);
+      document.documentElement.setAttribute("data-accent", accent);
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <div class="topbar">
@@ -18,6 +27,12 @@
     <div class="topbar-project">
       <h1 id="projectName">Loading…<span class="role-badge" id="roleBadge"></span></h1>
       <select id="projectSelect" class="project-select" style="display:none;"></select>
+      <button class="btn-secondary" id="allProjectsBtn" title="View all projects and team access">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle;">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+        </svg>
+        Projects (<span id="totalProjectsBadge">0</span>)
+      </button>
       <button class="btn-secondary" id="newProjectBtn">+ New Project</button>
     </div>
 
@@ -183,6 +198,41 @@
     </div>
   </div>
 
+  <!-- All Projects & Member Access Modal -->
+  <div class="modal-overlay" id="allProjectsModalOverlay">
+    <div class="modal modal-lg" style="max-width:760px; width:92%; max-height:88vh; display:flex; flex-direction:column;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem; border-bottom:1px solid var(--border); padding-bottom:0.75rem;">
+        <div>
+          <h2 style="margin:0 0 0.25rem 0; font-size:1.25rem; display:flex; align-items:center; gap:0.5rem;">
+            <span>Projects & Access Overview</span>
+            <span class="projects-badge-pill" id="modalTotalProjectsPill">0 Total</span>
+          </h2>
+          <p style="margin:0; font-size:0.85rem; color:var(--ink-muted);">
+            Workspace directory of all projects and who has access to them.
+          </p>
+        </div>
+        <button type="button" class="btn-ghost" id="closeAllProjectsModalTop" aria-label="Close" style="font-size:1.4rem; line-height:1; padding:0.2rem 0.5rem; color:var(--ink-muted);">&times;</button>
+      </div>
+
+      <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem; flex-wrap:wrap;">
+        <input type="text" id="projectsFilterInput" class="filter-input" placeholder="Search projects or team members…" style="flex:1; min-width:200px;">
+        <select id="projectsAccessFilter" class="filter-input" style="width:auto; min-width:140px;">
+          <option value="all">All Projects</option>
+          <option value="mine">My Projects</option>
+        </select>
+        <button type="button" class="btn-primary" id="modalNewProjectBtn" style="width:auto; padding:0.4rem 0.8rem; font-size:0.85rem;">+ New Project</button>
+      </div>
+
+      <div class="projects-overview-container" id="projectsOverviewContainer" style="overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:0.75rem; padding-right:4px;">
+        <div style="font-size:0.85rem; color:var(--ink-muted); padding:1.5rem; text-align:center;">Loading projects…</div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:1rem; border-top:1px solid var(--border); padding-top:0.75rem; display:flex; justify-content:flex-end;">
+        <button type="button" class="btn-secondary" id="closeAllProjectsModalBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="settingsModalOverlay">
     <div class="modal settings-modal">
       <h2>Project Settings</h2>
@@ -190,6 +240,7 @@
         <button type="button" class="settings-tab-btn active" data-tab="general">General</button>
         <button type="button" class="settings-tab-btn" data-tab="team">Team & Roles</button>
         <button type="button" class="settings-tab-btn" data-tab="appearance">Appearance</button>
+        <button type="button" class="settings-tab-btn" data-tab="security">Security (2FA)</button>
       </div>
 
       <div class="settings-panel active" id="tabGeneral">
@@ -243,7 +294,10 @@
           <div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">Loading members…</div>
         </div>
 
-        <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted); margin-top:1rem; display:block;">Workspace Directory</label>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1.25rem;">
+          <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted);">Workspace Directory & Project Access</label>
+          <span style="font-size:0.75rem; color:var(--ink-muted);">Total projects per user</span>
+        </div>
         <div class="member-list" id="workspaceUsersContainer">
           <div style="font-size:0.85rem; color:var(--ink-muted); padding:0.5rem 0;">Loading workspace users…</div>
         </div>
@@ -276,6 +330,50 @@
         </div>
       </div>
 
+      <div class="settings-panel" id="tabSecurity">
+        <label style="font-size:0.85rem; font-weight:600; color:var(--ink-muted);">Two-Factor Authentication (2FA)</label>
+        <p style="font-size:0.85rem; color:var(--ink-muted); margin:0.35rem 0 1rem;">Protect your account with Time-based One-Time Password (TOTP) verification using Google Authenticator, Microsoft Authenticator, or Apple Passwords.</p>
+
+        <div id="mfaStatusCard" style="background:var(--surface-sunken); border:1px solid var(--border-color); border-radius:8px; padding:1rem; margin-bottom:1rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:600; font-size:0.95rem;" id="mfaStatusHeading">Checking 2FA status…</div>
+              <div style="font-size:0.8rem; color:var(--ink-muted);" id="mfaStatusSub">Connecting to auth service…</div>
+            </div>
+            <div id="mfaBadge"></div>
+          </div>
+        </div>
+
+        <div id="mfaDisabledView" style="display:none;">
+          <button type="button" class="btn-primary" id="startMfaEnrollBtn" style="width:auto;">Set Up Two-Factor Authentication</button>
+        </div>
+
+        <div id="mfaEnrollView" style="display:none; background:var(--surface-sunken); border:1px solid var(--border-color); border-radius:8px; padding:1.25rem;">
+          <h4 style="margin:0 0 0.5rem; font-size:0.95rem;">Step 1: Scan QR Code</h4>
+          <p style="font-size:0.8rem; color:var(--ink-muted); margin-bottom:1rem;">Open your authenticator app (Google Authenticator, Authy, Apple Passwords) and scan this QR code:</p>
+          <div id="mfaQrContainer" style="display:flex; justify-content:center; align-items:center; background:#fff; padding:1rem; border-radius:8px; width:fit-content; margin:0 auto 1rem;"></div>
+          
+          <div style="font-size:0.8rem; color:var(--ink-muted); margin-bottom:1rem; text-align:center;">
+            Or enter code manually: <code id="mfaSecretCode" style="font-weight:bold; background:var(--surface-card); padding:2px 6px; border-radius:4px; user-select:all;"></code>
+          </div>
+
+          <h4 style="margin:0 0 0.5rem; font-size:0.95rem;">Step 2: Enter 6-Digit Code</h4>
+          <div class="field" style="margin-bottom:1rem;">
+            <input type="text" id="mfaVerifyCodeInput" placeholder="123456" maxlength="6" inputmode="numeric" style="letter-spacing:0.25rem; font-size:1.1rem; text-align:center;">
+          </div>
+          <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+            <button type="button" class="btn-secondary" id="cancelMfaEnrollBtn">Cancel</button>
+            <button type="button" class="btn-primary" id="confirmMfaEnrollBtn" style="width:auto;">Confirm & Activate</button>
+          </div>
+        </div>
+
+        <div id="mfaEnabledView" style="display:none;">
+          <div style="display:flex; justify-content:flex-end;">
+            <button type="button" class="btn-danger" id="disableMfaBtn" style="width:auto;">Disable Two-Factor Authentication</button>
+          </div>
+        </div>
+      </div>
+
       <div class="modal-actions">
         <button type="button" class="btn-secondary" id="closeSettingsBtn">Close</button>
       </div>
@@ -285,5 +383,6 @@
   <script src="static/js/api.js"></script>
   <script src="static/js/toast.js"></script>
   <script src="static/js/board.js"></script>
+  <script src="static/js/notification.js"></script>
 </body>
 </html>
