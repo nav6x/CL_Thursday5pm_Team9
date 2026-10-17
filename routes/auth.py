@@ -1,3 +1,4 @@
+import os
 from flask import Blueprint, request, jsonify
 from config import supabase, supabase_auth
 from auth_utils import login_required

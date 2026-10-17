@@ -35,6 +35,10 @@ def serve_board():
 def health():
     return {"status": "ok"}, 200
 
+@app.route("/reset-password.html")
+def serve_reset_password():
+    return send_from_directory(".", "reset-password.html")
+
 
 # Without these, an unhandled error or a wrong URL returns Flask's default
 # HTML error page — which breaks api.js's `response.json()` call on the
