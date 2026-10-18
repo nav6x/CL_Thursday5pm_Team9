@@ -25,6 +25,25 @@ def _is_assignee(task_id, user_id):
 def _get_task_or_404(task_id):
     return maybe_one(supabase.table("tasks").select("*").eq("id", task_id))
 
+# --- activity log helpers ---------------------------------------------------
+# Everything below is best-effort: the task change has already been saved by the
+# time we log it, so a logging problem must not turn into an error response.
+
+def _safely(fn, default=None):
+    try:
+        return fn()
+    except Exception:
+        activity.logger.exception("Activity logging step failed")
+        return default
+
+
+def _log(project_id, task_id, task_name, events):
+    """Record events as the current user. Never raises."""
+    if not events:
+        return
+    actor_name = _safely(lambda: activity.get_actor_name(g.user), "Someone")
+    activity.record_events(project_id, task_id, task_name, g.user.id, actor_name, events)
+
 @tasks_bp.route("", methods=["GET"])
 @login_required
 def list_tasks(project_id):
@@ -148,6 +167,12 @@ def update_task(project_id, task_id):
     if not updates:
         return jsonify({"error": "Nothing to update"}), 400
 
+    events = _safely(lambda: activity.diff_task_update(
+        task,
+        updates,
+        activity.column_names([task.get("column_id"), updates.get("column_id")]) if "column_id" in updates else None,
+    ), [])
+
     result = supabase.table("tasks").update(updates).eq("id", task_id).execute()
 
     try:
@@ -192,6 +217,8 @@ def delete_task(project_id, task_id):
     if role != "leader":
         return jsonify({"error": "Only a Project Leader can delete tasks"}), 403
 
+    task_name = _safely(lambda: activity.task_name(task_id))
+
     supabase.table("tasks").delete().eq("id", task_id).execute()
 
     try:
@@ -221,6 +248,8 @@ def set_assignees(project_id, task_id):
     assignee_ids = body.get("assignee_ids", [])
     valid_uids = list(dict.fromkeys([uid for uid in assignee_ids if uid]))
 
+    old_ids = _safely(lambda: activity.assignee_ids(task_id))
+
     try:
         supabase.table("task_assignees").delete().eq("task_id", task_id).execute()
         if valid_uids:
@@ -230,4 +259,45 @@ def set_assignees(project_id, task_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+    if old_ids is not None:
+        def _log_assignee_change():
+            names = activity.profile_names(list(old_ids) + valid_uids)
+            events = activity.diff_assignees(
+                {u: names.get(u, "Unknown user") for u in old_ids},
+                {u: names.get(u, "Unknown user") for u in valid_uids},
+            )
+            _log(project_id, task_id, activity.task_name(task_id), events)
+        _safely(_log_assignee_change)
+
     return jsonify({"message": "Assignees updated"}), 200
+
+@tasks_bp.route("/<task_id>/activity", methods=["GET"])
+@login_required
+def list_task_activity(project_id, task_id):
+    """Newest-first history of changes to one task. Any project member can
+    read it. Rows are matched on BOTH project_id and task_id, so a member of
+    project A can't read project B's history by swapping ids in the URL.
+    Query params: limit (1-200, default 50), offset (default 0)."""
+    role = get_role_in_project(g.user.id, project_id)
+    if role is None:
+        return jsonify({"error": "You are not a member of this project"}), 403
+
+    try:
+        limit = int(request.args.get("limit", 50))
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        return jsonify({"error": "limit and offset must be integers"}), 400
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    rows = (
+        supabase.table("task_activity")
+        .select("id, task_id, actor_id, actor_name, action, details, created_at")
+        .eq("project_id", project_id)
+        .eq("task_id", task_id)
+        .order("created_at", desc=True)
+        .range(offset, offset + limit - 1)
+        .execute()
+        .data
+    ) or []
+    return jsonify(rows), 200

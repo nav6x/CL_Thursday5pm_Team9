@@ -13,3 +13,12 @@ def client():
 
     with flask_app.test_client() as client:
         yield client
+
+@pytest.fixture(autouse=True)
+def _isolate_activity_log(monkeypatch):
+    """The activity log talks to Supabase through its own client (activity.supabase),
+    separate from the `tasks.supabase` that the route tests mock. Replace it with a
+    harmless fake so no test ever makes a real network call or writes a log row."""
+    from unittest.mock import MagicMock
+    import activity
+    monkeypatch.setattr(activity, "supabase", MagicMock())
