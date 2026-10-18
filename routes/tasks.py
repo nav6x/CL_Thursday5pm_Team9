@@ -2,14 +2,9 @@ from flask import Blueprint, request, jsonify, g
 from config import supabase, maybe_one
 from auth_utils import login_required, get_role_in_project
 from notifications_utils import create_notifications, notify_project, diff_description, display_name, project_name
+import activity
 
 tasks_bp = Blueprint("tasks", __name__, url_prefix="/api/projects/<project_id>/tasks")
-
-# Expects:
-#   tasks           — id, project_id, column_id, name, description, priority
-#                     ('high'|'medium'|'low'), story_points (int 0-10),
-#                     created_by, position, created_at
-#   task_assignees  — task_id, user_id (composite key, many-to-many join table)
 
 
 def _is_assignee(task_id, user_id):
@@ -25,9 +20,6 @@ def _is_assignee(task_id, user_id):
 def _get_task_or_404(task_id):
     return maybe_one(supabase.table("tasks").select("*").eq("id", task_id))
 
-# --- activity log helpers ---------------------------------------------------
-# Everything below is best-effort: the task change has already been saved by the
-# time we log it, so a logging problem must not turn into an error response.
 
 def _safely(fn, default=None):
     try:
@@ -104,6 +96,9 @@ def create_task(project_id):
             {"task_id": task["id"], "user_id": uid} for uid in valid_uids
         ]).execute()
 
+        column_name = _safely(lambda: activity.column_names([column_id]).get(column_id))
+    _log(project_id, task["id"], task["name"], [activity.event(activity.TASK_CREATED, column=column_name)])
+
     try:
         actor = display_name(g.user.id)
         pname = project_name(project_id)
@@ -175,6 +170,8 @@ def update_task(project_id, task_id):
 
     result = supabase.table("tasks").update(updates).eq("id", task_id).execute()
 
+    _log(project_id, task_id, updates.get("name", task.get("name")), events)
+
     try:
         actor = display_name(g.user.id)
         task_name = task.get("name") or updates.get("name") or "a task"
@@ -217,9 +214,13 @@ def delete_task(project_id, task_id):
     if role != "leader":
         return jsonify({"error": "Only a Project Leader can delete tasks"}), 403
 
-    task_name = _safely(lambda: activity.task_name(task_id))
+    task = _get_task_or_404(task_id)
+    task_name = task.get("name") if task else None
 
     supabase.table("tasks").delete().eq("id", task_id).execute()
+
+    if task_name is not None:
+        _log(project_id, task_id, task_name, [activity.event(activity.TASK_DELETED)])
 
     try:
         if task:
