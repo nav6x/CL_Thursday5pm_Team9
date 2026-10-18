@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, g
 from config import supabase, maybe_one
 from auth_utils import login_required, get_role_in_project
-import activity
+from notifications_utils import create_notifications, notify_project, diff_description, display_name, project_name
 
 tasks_bp = Blueprint("tasks", __name__, url_prefix="/api/projects/<project_id>/tasks")
 
@@ -104,8 +104,22 @@ def create_task(project_id):
             {"task_id": task["id"], "user_id": uid} for uid in valid_uids
         ]).execute()
 
-    column_name = _safely(lambda: activity.column_names([column_id]).get(column_id))
-    _log(project_id, task["id"], task["name"], [activity.event(activity.TASK_CREATED, column=column_name)])
+    try:
+        actor = display_name(g.user.id)
+        pname = project_name(project_id)
+        notify_project(
+            project_id, g.user.id, "task_created",
+            f'{actor} created task "{name}" in "{pname}"',
+            task_id=task["id"]
+        )
+        if valid_uids:
+            create_notifications(
+                valid_uids, g.user.id, "task_assigned",
+                f'{actor} assigned you to "{name}"',
+                project_id=project_id, task_id=task["id"]
+            )
+    except Exception:
+        pass
 
     return jsonify(task), 201
 
@@ -161,7 +175,38 @@ def update_task(project_id, task_id):
 
     result = supabase.table("tasks").update(updates).eq("id", task_id).execute()
 
-    _log(project_id, task_id, updates.get("name", task.get("name")), events)
+    try:
+        actor = display_name(g.user.id)
+        task_name = task.get("name") or updates.get("name") or "a task"
+        if "column_id" in updates and updates["column_id"] != task.get("column_id"):
+            notify_project(
+                project_id, g.user.id, "task_moved",
+                f'{actor} moved "{task_name}"',
+                task_id=task_id
+            )
+        if "description" in updates:
+            content_changed, new_comments = diff_description(task.get("description", ""), updates["description"])
+            for comment in new_comments:
+                notify_project(
+                    project_id, g.user.id, "task_commented",
+                    f'{actor} commented on "{task_name}"',
+                    task_id=task_id
+                )
+            if content_changed:
+                notify_project(
+                    project_id, g.user.id, "task_updated",
+                    f'{actor} updated "{task_name}"',
+                    task_id=task_id
+                )
+        elif any(k in updates for k in ("name", "priority", "story_points")):
+            notify_project(
+                project_id, g.user.id, "task_updated",
+                f'{actor} updated "{task_name}"',
+                task_id=task_id
+            )
+    except Exception:
+        pass
+
     return jsonify(result.data[0]), 200
 
 
@@ -176,8 +221,17 @@ def delete_task(project_id, task_id):
 
     supabase.table("tasks").delete().eq("id", task_id).execute()
 
-    if task_name is not None:
-        _log(project_id, task_id, task_name, [activity.event(activity.TASK_DELETED)])
+    try:
+        if task:
+            actor = display_name(g.user.id)
+            notify_project(
+                project_id, g.user.id, "task_deleted",
+                f'{actor} deleted task "{task.get("name")}"',
+                task_id=task_id
+            )
+    except Exception:
+        pass
+
     return jsonify({"message": "Task deleted"}), 200
 
 

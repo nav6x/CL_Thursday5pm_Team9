@@ -5,6 +5,7 @@ from routes.auth import auth_bp
 from routes.projects import projects_bp
 from routes.columns import columns_bp
 from routes.tasks import tasks_bp
+from routes.notifications import notifications_bp
 
 app = Flask(__name__)
 
@@ -16,6 +17,7 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(projects_bp)
 app.register_blueprint(columns_bp)
 app.register_blueprint(tasks_bp)
+app.register_blueprint(notifications_bp)
 
 
 @app.route("/")
@@ -32,6 +34,10 @@ def serve_board():
 @app.route("/api/health", methods=["GET"])
 def health():
     return {"status": "ok"}, 200
+
+@app.route("/reset-password.html")
+def serve_reset_password():
+    return send_from_directory(".", "reset-password.html")
 
 
 # Without these, an unhandled error or a wrong URL returns Flask's default

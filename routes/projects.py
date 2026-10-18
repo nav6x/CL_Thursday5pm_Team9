@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g
 from config import supabase, maybe_one   
 from auth_utils import login_required, require_role
+from notifications_utils import create_notifications, display_name, project_name
 
 projects_bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 
@@ -51,6 +52,68 @@ def list_my_projects():
         if m.get("projects")
     ]
     return jsonify(projects), 200
+
+
+@projects_bp.route("/overview", methods=["GET"])
+@login_required
+def projects_overview():
+    """Returns workspace-wide overview of all projects, total project count,
+    and the member access list with roles for each project."""
+    projects_res = (
+        supabase.table("projects")
+        .select("id, name, created_at, created_by")
+        .execute()
+    )
+    projects_data = projects_res.data or []
+
+    members_res = (
+        supabase.table("project_members")
+        .select("project_id, user_id, role, profiles(id, full_name, email)")
+        .execute()
+    )
+    members_data = members_res.data or []
+
+    members_by_project = {}
+    for m in members_data:
+        pid = m.get("project_id")
+        if not pid:
+            continue
+        if pid not in members_by_project:
+            members_by_project[pid] = []
+
+        p = m.get("profiles") or {}
+        clean_name, agile_role = extract_agile_role(p.get("full_name") or "", m.get("role", "developer"))
+        uid = m.get("user_id") or p.get("id")
+        members_by_project[pid].append({
+            "user_id": uid,
+            "full_name": clean_name or p.get("email", ""),
+            "email": p.get("email", ""),
+            "role": m.get("role", "developer"),
+            "agile_role": agile_role,
+        })
+
+    formatted_projects = []
+    for proj in projects_data:
+        pid = proj.get("id")
+        p_members = members_by_project.get(pid, [])
+        my_membership = next((m for m in p_members if m["user_id"] == g.user.id), None)
+
+        formatted_projects.append({
+            "id": pid,
+            "name": proj.get("name", "Untitled Project"),
+            "created_at": proj.get("created_at"),
+            "created_by": proj.get("created_by"),
+            "member_count": len(p_members),
+            "members": p_members,
+            "is_member": my_membership is not None,
+            "my_role": my_membership["role"] if my_membership else None,
+            "my_agile_role": my_membership["agile_role"] if my_membership else None,
+        })
+
+    return jsonify({
+        "total_projects": len(formatted_projects),
+        "projects": formatted_projects,
+    }), 200
 
 
 @projects_bp.route("", methods=["POST"])
@@ -160,6 +223,18 @@ def add_member(project_id):
     except Exception:
         pass
 
+    # Tell the new member they now have access to this project.
+    try:
+        actor = display_name(g.user.id)
+        pname = project_name(project_id)
+        create_notifications(
+            [target_id], g.user.id, "project_member_added",
+            f'{actor} added you to "{pname}" as {display_role}',
+            project_id=project_id,
+        )
+    except Exception:
+        pass
+
     return jsonify({"message": "Member added", "role": db_role, "agile_role": display_role}), 201
 
 
@@ -168,6 +243,7 @@ def add_member(project_id):
 @require_role("leader")
 def add_all_members(project_id):
     all_users = supabase.table("profiles").select("id").execute().data or []
+    newly_added = []
     for u in all_users:
         existing = maybe_one(   
             supabase.table("project_members")
@@ -181,6 +257,19 @@ def add_all_members(project_id):
                 "user_id": u["id"],
                 "role": "developer",
             }).execute()
+            newly_added.append(u["id"])
+
+    if newly_added:
+        try:
+            actor = display_name(g.user.id)
+            pname = project_name(project_id)
+            create_notifications(
+                newly_added, g.user.id, "project_member_added",
+                f'{actor} added you to "{pname}" as Developer',
+                project_id=project_id,
+            )
+        except Exception:
+            pass
 
     return jsonify({"message": "All workspace users added to project"}), 200
 
@@ -241,6 +330,17 @@ def update_member(project_id, user_id):
                 supabase.table("profiles").update({"full_name": new_name}).eq("id", user_id).execute()
             except Exception:
                 pass
+
+    try:
+        actor = display_name(g.user.id)
+        pname = project_name(project_id)
+        create_notifications(
+            [user_id], g.user.id, "role_changed",
+            f'{actor} changed your role in "{pname}" to {display_role}',
+            project_id=project_id,
+        )
+    except Exception:
+        pass
 
     return jsonify({"role": db_role, "agile_role": display_role}), 200
 

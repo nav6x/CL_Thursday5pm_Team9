@@ -32,17 +32,27 @@
       <form id="authForm">
         <div class="field" id="nameField" style="display:none;">
           <label for="fullName">Full name</label>
-          <input type="text" id="fullName" placeholder="Jamie Chen">
+          <input type="text" id="fullName" placeholder="Jamie Chen" autocomplete="name">
         </div>
-        <div class="field">
+        <div class="field" id="emailField">
           <label for="email">Email</label>
-          <input type="email" id="email" placeholder="you@example.com" required>
+          <input type="email" id="email" placeholder="you@example.com" required autocomplete="email">
         </div>
-        <div class="field">
+        <div class="field" id="passwordField">
           <label for="password">Password</label>
-          <input type="password" id="password" placeholder="••••••••" required>
+          <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
         </div>
+            <a href="reset-password.html" id="forgotLink" style="display:block; text-align:right; font-size:0.85rem; margin:-0.25rem 0 1rem;">Forgot password?</a>
         <button type="submit" class="btn-primary" id="submitBtn">Log in</button>
+      </form>
+
+      <form id="mfaForm" style="display:none;">
+        <div class="field">
+          <label for="mfaCode">6-Digit Authenticator Code</label>
+          <input type="text" id="mfaCode" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code" style="letter-spacing:0.25rem; font-size:1.2rem; text-align:center;">
+        </div>
+        <button type="submit" class="btn-primary" id="mfaSubmitBtn">Verify Code</button>
+        <button type="button" class="btn-secondary" id="mfaBackBtn" style="margin-top:0.6rem; width:100%;">Back to Login</button>
       </form>
 
       <p class="auth-switch">

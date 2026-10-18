@@ -50,7 +50,7 @@ Get these values from your Supabase project's **Settings → API** page.
 
 **3. Set up the database schema.** In your Supabase project's SQL Editor, run the schema in [`supabase/schema.sql`](supabase/schema.sql) (creates `profiles`, `projects`, `project_members`, `columns`, `tasks`, `task_assignees`, and grants the required table permissions to `service_role`).
 
-**4. Disable "Confirm email"** under Supabase's **Authentication → Sign In / Providers → Email** — this is a deliberate choice for local development/testing speed, not an oversight; it should be revisited before any real production use.
+**4. Configure email verification** under Supabase's **Authentication → Sign In / Providers → Email**: keep **"Confirm email" enabled** so users must verify their email via the verification link sent by Supabase. In **Authentication → URL Configuration**, configure your **Site URL** (e.g. `http://127.0.0.1:5000` or production URL) so the email confirmation links redirect properly back to the app.
 
 **5. Run the app**
 ```bash

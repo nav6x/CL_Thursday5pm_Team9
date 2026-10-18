@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g
-from Test_Branch.config import supabase
-from Test_Branch.auth_utils import login_required, require_role
+from config import supabase, maybe_one   
+from auth_utils import login_required, require_role
+from notifications_utils import create_notifications, display_name, project_name
 
 projects_bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 
@@ -11,21 +12,108 @@ projects_bp = Blueprint("projects", __name__, url_prefix="/api/projects")
 # Swap the table/column names in the queries below to match your own schema.
 
 
+ROLE_MAP = {
+    "leader": ("leader", "Project Leader"),
+    "project_leader": ("leader", "Project Leader"),
+    "scrum_master": ("leader", "Scrum Master"),
+    "product_owner": ("leader", "Product Owner"),
+    "developer": ("developer", "Developer"),
+    "qa_engineer": ("developer", "QA Engineer"),
+}
+
+
+def extract_agile_role(full_name, default_db_role):
+    if not full_name:
+        return "", "Project Leader" if default_db_role == "leader" else "Developer"
+    if "[" in full_name and full_name.endswith("]"):
+        idx = full_name.rfind("[")
+        role_label = full_name[idx + 1:-1].strip()
+        clean_name = full_name[:idx].strip()
+        return clean_name, role_label
+    return full_name, "Project Leader" if default_db_role == "leader" else "Developer"
+
+
 @projects_bp.route("", methods=["GET"])
 @login_required
 def list_my_projects():
-    """Every project the logged-in user belongs to, with their role in each."""
     memberships = (
         supabase.table("project_members")
         .select("role, projects(id, name, created_at)")
         .eq("user_id", g.user.id)
         .execute()
     )
+    # safe lookup — falls back to {} if the user has no profile row
+    my_profile = maybe_one(supabase.table("profiles").select("full_name").eq("id", g.user.id)) or {}
+    _, my_agile_role = extract_agile_role(my_profile.get("full_name") or "", "developer")
+
     projects = [
-        {**m["projects"], "my_role": m["role"]}
-        for m in memberships.data
+        {**m["projects"], "my_role": m.get("role", "developer"), "my_agile_role": my_agile_role}
+        for m in (memberships.data or [])
+        if m.get("projects")
     ]
     return jsonify(projects), 200
+
+
+@projects_bp.route("/overview", methods=["GET"])
+@login_required
+def projects_overview():
+    """Returns workspace-wide overview of all projects, total project count,
+    and the member access list with roles for each project."""
+    projects_res = (
+        supabase.table("projects")
+        .select("id, name, created_at, created_by")
+        .execute()
+    )
+    projects_data = projects_res.data or []
+
+    members_res = (
+        supabase.table("project_members")
+        .select("project_id, user_id, role, profiles(id, full_name, email)")
+        .execute()
+    )
+    members_data = members_res.data or []
+
+    members_by_project = {}
+    for m in members_data:
+        pid = m.get("project_id")
+        if not pid:
+            continue
+        if pid not in members_by_project:
+            members_by_project[pid] = []
+
+        p = m.get("profiles") or {}
+        clean_name, agile_role = extract_agile_role(p.get("full_name") or "", m.get("role", "developer"))
+        uid = m.get("user_id") or p.get("id")
+        members_by_project[pid].append({
+            "user_id": uid,
+            "full_name": clean_name or p.get("email", ""),
+            "email": p.get("email", ""),
+            "role": m.get("role", "developer"),
+            "agile_role": agile_role,
+        })
+
+    formatted_projects = []
+    for proj in projects_data:
+        pid = proj.get("id")
+        p_members = members_by_project.get(pid, [])
+        my_membership = next((m for m in p_members if m["user_id"] == g.user.id), None)
+
+        formatted_projects.append({
+            "id": pid,
+            "name": proj.get("name", "Untitled Project"),
+            "created_at": proj.get("created_at"),
+            "created_by": proj.get("created_by"),
+            "member_count": len(p_members),
+            "members": p_members,
+            "is_member": my_membership is not None,
+            "my_role": my_membership["role"] if my_membership else None,
+            "my_agile_role": my_membership["agile_role"] if my_membership else None,
+        })
+
+    return jsonify({
+        "total_projects": len(formatted_projects),
+        "projects": formatted_projects,
+    }), 200
 
 
 @projects_bp.route("", methods=["POST"])
@@ -54,11 +142,11 @@ def create_project():
     # — the client can still add/rename/delete freely afterward.
     default_columns = ["To Do", "In Progress", "Done"]
     supabase.table("columns").insert([
-        {"project_id": project["id"], "name": name, "position": i}
-        for i, name in enumerate(default_columns)
+        {"project_id": project["id"], "name": col_name, "position": i}
+        for i, col_name in enumerate(default_columns)   
     ]).execute()
 
-    return jsonify(project), 201
+    return jsonify({**project, "my_role": "leader", "my_agile_role": "Project Leader"}), 201
 
 
 @projects_bp.route("/<project_id>/members", methods=["GET"])
@@ -70,31 +158,199 @@ def list_members(project_id):
         .eq("project_id", project_id)
         .execute()
     )
-    return jsonify(result.data), 200
+    formatted = []
+    for item in (result.data or []):
+        p = item.get("profiles") or {}
+        clean_name, agile_role = extract_agile_role(p.get("full_name") or "", item.get("role", "developer"))
+        formatted.append({
+            "role": item.get("role", "developer"),
+            "agile_role": agile_role,
+            "profiles": {
+                "id": p.get("id"),
+                "full_name": clean_name or p.get("email", ""),
+                "email": p.get("email", ""),
+            }
+        })
+    return jsonify(formatted), 200
 
 
 @projects_bp.route("/<project_id>/members", methods=["POST"])
 @login_required
 @require_role("leader")
 def add_member(project_id):
-    """Only a Project Leader can add teammates to the project."""
     body = request.get_json(force=True)
-    email = body.get("email", "").strip().lower()
-    role = body.get("role", "developer")
+    raw_role = body.get("role", "developer")
 
-    if role not in ("leader", "developer"):
-        return jsonify({"error": "role must be 'leader' or 'developer'"}), 400
+    if raw_role not in ROLE_MAP:
+        return jsonify({"error": "role must be one of: " + ", ".join(ROLE_MAP.keys())}), 400
 
-    profile = (
-        supabase.table("profiles").select("id").eq("email", email).maybe_single().execute()
-    )
-    if not profile.data:
+    db_role, display_role = ROLE_MAP[raw_role]
+
+    user_id = body.get("user_id")
+    if user_id:
+        
+        profile = maybe_one(supabase.table("profiles").select("id, full_name, email").eq("id", user_id))
+    else:
+        email = body.get("email", "").strip().lower()
+        if not email:
+            return jsonify({"error": "email or user_id required"}), 400
+        profile = maybe_one(supabase.table("profiles").select("id, full_name, email").eq("email", email))
+
+    if not profile:
         return jsonify({"error": "No user found with that email — they need to sign up first"}), 404
+
+    target_id = profile["id"]   
+    existing = maybe_one(      
+        supabase.table("project_members")
+        .select("id")
+        .eq("project_id", project_id)
+        .eq("user_id", target_id)
+    )
+    if existing:   
+        return jsonify({"message": "User is already a member of this project"}), 200
 
     supabase.table("project_members").insert({
         "project_id": project_id,
-        "user_id": profile.data["id"],
-        "role": role,
+        "user_id": target_id,
+        "role": db_role,
     }).execute()
 
-    return jsonify({"message": "Member added"}), 201
+    current_name = profile.get("full_name") or ""
+    clean_name = current_name.split("[")[0].strip() if current_name else (profile.get("email") or "")
+    new_name = f"{clean_name} [{display_role}]".strip()
+    try:
+        supabase.table("profiles").update({"full_name": new_name}).eq("id", target_id).execute()
+    except Exception:
+        pass
+
+    # Tell the new member they now have access to this project.
+    try:
+        actor = display_name(g.user.id)
+        pname = project_name(project_id)
+        create_notifications(
+            [target_id], g.user.id, "project_member_added",
+            f'{actor} added you to "{pname}" as {display_role}',
+            project_id=project_id,
+        )
+    except Exception:
+        pass
+
+    return jsonify({"message": "Member added", "role": db_role, "agile_role": display_role}), 201
+
+
+@projects_bp.route("/<project_id>/members/all", methods=["POST"])
+@login_required
+@require_role("leader")
+def add_all_members(project_id):
+    all_users = supabase.table("profiles").select("id").execute().data or []
+    newly_added = []
+    for u in all_users:
+        existing = maybe_one(   
+            supabase.table("project_members")
+            .select("id")
+            .eq("project_id", project_id)
+            .eq("user_id", u["id"])
+        )
+        if not existing:
+            supabase.table("project_members").insert({
+                "project_id": project_id,
+                "user_id": u["id"],
+                "role": "developer",
+            }).execute()
+            newly_added.append(u["id"])
+
+    if newly_added:
+        try:
+            actor = display_name(g.user.id)
+            pname = project_name(project_id)
+            create_notifications(
+                newly_added, g.user.id, "project_member_added",
+                f'{actor} added you to "{pname}" as Developer',
+                project_id=project_id,
+            )
+        except Exception:
+            pass
+
+    return jsonify({"message": "All workspace users added to project"}), 200
+
+
+@projects_bp.route("/<project_id>", methods=["PATCH"])
+@login_required
+@require_role("leader")
+def update_project(project_id):
+    body = request.get_json(force=True)
+    name = body.get("name", "").strip()
+    if not name:
+        return jsonify({"error": "Project name is required"}), 400
+
+    result = supabase.table("projects").update({"name": name}).eq("id", project_id).execute()
+    if not result.data:
+        return jsonify({"error": "Project not found"}), 404
+    return jsonify(result.data[0]), 200
+
+
+@projects_bp.route("/<project_id>", methods=["DELETE"])
+@login_required
+@require_role("leader")
+def delete_project(project_id):
+    supabase.table("projects").delete().eq("id", project_id).execute()
+    return jsonify({"message": "Project deleted"}), 200
+
+
+@projects_bp.route("/<project_id>/members/<user_id>", methods=["PATCH"])
+@login_required
+@require_role("leader")
+def update_member(project_id, user_id):
+    body = request.get_json(force=True)
+    raw_role = body.get("role", "developer")
+
+    if raw_role not in ROLE_MAP:
+        return jsonify({"error": "role must be one of: " + ", ".join(ROLE_MAP.keys())}), 400
+
+    db_role, display_role = ROLE_MAP[raw_role]
+
+    result = (
+        supabase.table("project_members")
+        .update({"role": db_role})
+        .eq("project_id", project_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not result.data:
+        return jsonify({"error": "Member not found"}), 404
+
+    # safe lookup
+    target_profile = maybe_one(supabase.table("profiles").select("full_name").eq("id", user_id))
+    if target_profile:
+        current_name = target_profile.get("full_name") or ""
+        clean_name = current_name.split("[")[0].strip() if current_name else ""
+        if clean_name:
+            new_name = f"{clean_name} [{display_role}]".strip()
+            try:
+                supabase.table("profiles").update({"full_name": new_name}).eq("id", user_id).execute()
+            except Exception:
+                pass
+
+    try:
+        actor = display_name(g.user.id)
+        pname = project_name(project_id)
+        create_notifications(
+            [user_id], g.user.id, "role_changed",
+            f'{actor} changed your role in "{pname}" to {display_role}',
+            project_id=project_id,
+        )
+    except Exception:
+        pass
+
+    return jsonify({"role": db_role, "agile_role": display_role}), 200
+
+
+@projects_bp.route("/<project_id>/members/<user_id>", methods=["DELETE"])
+@login_required
+@require_role("leader")
+def remove_member(project_id, user_id):
+    if user_id == g.user.id:
+        return jsonify({"error": "Cannot remove yourself as project leader"}), 400
+
+    supabase.table("project_members").delete().eq("project_id", project_id).eq("user_id", user_id).execute()
+    return jsonify({"message": "Member removed"}), 200

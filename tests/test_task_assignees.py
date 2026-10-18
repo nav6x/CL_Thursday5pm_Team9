@@ -879,14 +879,10 @@ class TestIsAssignee(TaskTestCase):
         first_eq.assert_called_once_with("task_id", "task-1")
         first_eq.return_value.eq.assert_called_once_with("user_id", "user-1")
 
-    @unittest.expectedFailure
     def test_is_assignee_false_when_the_database_library_returns_none_for_no_match(self):
         """
-        KNOWN ISSUE (expected failure): the real Supabase library returns None - not a response
-        object - when maybe_single() finds no row, so `result.data` raises AttributeError. The
-        test above uses a response with data=None, which hides that. This is the faithful version.
-        When the code is fixed, unittest reports an "unexpected success": remove
-        @unittest.expectedFailure then.
+        The real Supabase library returns None - not a response object - when
+        maybe_single() finds no row. Tests that _is_assignee correctly returns False.
         """
 
         mock_supabase = mock_assignee_lookup(None)
