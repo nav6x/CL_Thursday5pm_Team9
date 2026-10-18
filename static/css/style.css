@@ -1350,3 +1350,71 @@ input:focus, textarea:focus, select:focus, button:focus-visible {
   .sprint-summary-bar { flex-wrap: wrap; gap: 1rem; margin: 0 1rem 0.5rem 1rem; }
   .sprint-progress-wrapper { max-width: 100%; width: 100%; margin-left: 0; }
 }
+
+/* ---- Task activity log (task modal) ---- */
+.activity-log {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--lane);
+  padding: 0.25rem 0.75rem;
+}
+
+.activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 0.4rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.activity-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.activity-text strong {
+  font-weight: 600;
+}
+
+.activity-time {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  padding-top: 0.1rem;
+}
+
+.activity-empty,
+.activity-error {
+  padding: 0.6rem 0;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.activity-more-btn {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+}

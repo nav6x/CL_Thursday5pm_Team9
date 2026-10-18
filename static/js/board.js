@@ -71,6 +71,11 @@ const commentCountBadge = document.getElementById("commentCountBadge");
 const newCommentInput = document.getElementById("newCommentInput");
 const addCommentBtn = document.getElementById("addCommentBtn");
 
+const taskActivitySection = document.getElementById("taskActivitySection");
+const activityLogContainer = document.getElementById("activityLogContainer");
+const activityCountBadge = document.getElementById("activityCountBadge");
+const activityMoreBtn = document.getElementById("activityMoreBtn");
+
 const metricTasksCount = document.getElementById("metricTasksCount");
 const metricPointsCount = document.getElementById("metricPointsCount");
 const metricUrgentCount = document.getElementById("metricUrgentCount");
@@ -634,6 +639,7 @@ async function persistCurrentComments() {
     });
     targetTask.description = newPacked;
     renderBoard();
+    loadTaskActivity(editingTaskId);
   } catch (err) {
     showToast(err.message, "error");
   }
@@ -676,6 +682,137 @@ if (addCommentBtn && newCommentInput) {
   });
 }
 
+// ---- Task activity log -----------------------------------------------------
+// The server records every change to a task (see activity.py). Here we just
+// fetch it for the open task and turn each entry into a readable sentence.
+const ACTIVITY_PAGE_SIZE = 20;
+let activityEntries = [];
+let activityHasMore = false;
+let activityLoadToken = 0; // ignore responses that arrive after the modal moved on to another task
+
+function activityStrong(value) {
+  return `<strong>${escapeHtml(String(value))}</strong>`;
+}
+
+function activityQuote(value) {
+  return `\u201c${escapeHtml(String(value))}\u201d`;
+}
+
+function activityList(values) {
+  return (values || []).map(activityStrong).join(", ");
+}
+
+function describeActivity(entry) {
+  const d = entry.details || {};
+  switch (entry.action) {
+    case "task_created":
+      return d.column ? `created this task in ${activityStrong(d.column)}` : "created this task";
+    case "task_deleted":
+      return "deleted this task";
+    case "task_renamed":
+      return `renamed this task from ${activityQuote(d.from)} to ${activityQuote(d.to)}`;
+    case "description_changed":
+      return "updated the description";
+    case "priority_changed":
+      return `changed priority from ${activityStrong(d.from)} to ${activityStrong(d.to)}`;
+    case "story_points_changed":
+      return `changed story points from ${activityStrong(d.from ?? 0)} to ${activityStrong(d.to ?? 0)}`;
+    case "task_moved":
+      return d.from_column && d.to_column
+        ? `moved this task from ${activityStrong(d.from_column)} to ${activityStrong(d.to_column)}`
+        : "moved this task to a different column";
+    case "tags_changed": {
+      const parts = [];
+      if (d.added && d.added.length) parts.push(`added ${d.added.length === 1 ? "tag" : "tags"} ${activityList(d.added)}`);
+      if (d.removed && d.removed.length) parts.push(`removed ${d.removed.length === 1 ? "tag" : "tags"} ${activityList(d.removed)}`);
+      return parts.join(" and ") || "changed the tags";
+    }
+    case "due_date_changed":
+      if (d.from && d.to) return `changed the due date from ${activityStrong(d.from)} to ${activityStrong(d.to)}`;
+      if (d.to) return `set the due date to ${activityStrong(d.to)}`;
+      return `removed the due date (${escapeHtml(d.from || "none")})`;
+    case "subtask_added":
+      return `added subtask ${activityQuote(d.text)}`;
+    case "subtask_removed":
+      return `removed subtask ${activityQuote(d.text)}`;
+    case "subtask_completed":
+      return `completed subtask ${activityQuote(d.text)}`;
+    case "subtask_reopened":
+      return `reopened subtask ${activityQuote(d.text)}`;
+    case "comment_added":
+      return `commented: ${activityQuote(d.text)}`;
+    case "comment_deleted":
+      return d.author ? `deleted a comment by ${activityStrong(d.author)}` : "deleted a comment";
+    case "assignees_changed": {
+      const parts = [];
+      if (d.added && d.added.length) parts.push(`assigned ${activityList(d.added)}`);
+      if (d.removed && d.removed.length) parts.push(`unassigned ${activityList(d.removed)}`);
+      return parts.join(" and ") || "changed the assignees";
+    }
+    default:
+      return escapeHtml(String(entry.action || "made a change").replace(/_/g, " "));
+  }
+}
+
+function renderActivityLog() {
+  if (!activityLogContainer) return;
+  if (activityCountBadge) {
+    const n = activityEntries.length;
+    activityCountBadge.textContent = n === 0 ? "" : `${n}${activityHasMore ? "+" : ""} event${n === 1 && !activityHasMore ? "" : "s"}`;
+  }
+  if (activityMoreBtn) activityMoreBtn.style.display = activityHasMore ? "inline-block" : "none";
+
+  if (activityEntries.length === 0) {
+    activityLogContainer.innerHTML = `<div class="activity-empty">No activity recorded yet.</div>`;
+    return;
+  }
+
+  activityLogContainer.innerHTML = activityEntries.map(entry => {
+    const when = entry.created_at ? new Date(entry.created_at) : null;
+    const fullTime = when && !isNaN(when) ? when.toLocaleString() : "";
+    return `
+      <div class="activity-item">
+        <span class="activity-dot"></span>
+        <div class="activity-text">${activityStrong(entry.actor_name || "Someone")} ${describeActivity(entry)}</div>
+        <span class="activity-time" title="${escapeHtml(fullTime)}">${escapeHtml(formatCommentTime(entry.created_at))}</span>
+      </div>`;
+  }).join("");
+}
+
+async function loadTaskActivity(taskId, { append = false } = {}) {
+  if (!taskId || !activityLogContainer) return;
+  const token = ++activityLoadToken;
+  const offset = append ? activityEntries.length : 0;
+
+  if (!append) {
+    activityEntries = [];
+    activityHasMore = false;
+    if (activityCountBadge) activityCountBadge.textContent = "";
+    if (activityMoreBtn) activityMoreBtn.style.display = "none";
+    activityLogContainer.innerHTML = `<div class="activity-empty">Loading activity…</div>`;
+  }
+
+  try {
+    // Ask for one extra row so we know whether an "older activity" page exists.
+    const rows = await api(
+      `/projects/${currentProject.id}/tasks/${taskId}/activity?limit=${ACTIVITY_PAGE_SIZE + 1}&offset=${offset}`
+    );
+    if (token !== activityLoadToken) return;
+    activityHasMore = rows.length > ACTIVITY_PAGE_SIZE;
+    activityEntries = activityEntries.concat(rows.slice(0, ACTIVITY_PAGE_SIZE));
+    renderActivityLog();
+  } catch (err) {
+    if (token !== activityLoadToken) return;
+    activityLogContainer.innerHTML = `<div class="activity-error">Couldn\u2019t load activity: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+if (activityMoreBtn) {
+  activityMoreBtn.addEventListener("click", () => {
+    if (editingTaskId) loadTaskActivity(editingTaskId, { append: true });
+  });
+}
+
 function openTaskModal(columnId, task = null) {
   activeColumnIdForNewTask = columnId;
   editingTaskId = task ? task.id : null;
@@ -708,6 +845,8 @@ function openTaskModal(columnId, task = null) {
     if (deleteTaskBtn) {
       deleteTaskBtn.style.display = currentRole === "leader" || task.created_by === user?.id ? "inline-block" : "none";
     }
+    if (taskActivitySection) taskActivitySection.style.display = "";
+    loadTaskActivity(task.id);
   } else {
     document.getElementById("modalTitle").textContent = "New Task";
     taskForm.reset();
@@ -723,6 +862,9 @@ function openTaskModal(columnId, task = null) {
     if (deleteTaskBtn) {
       deleteTaskBtn.style.display = "none";
     }
+
+    activityLoadToken++; // drop any in-flight activity response from a previously opened task
+    if (taskActivitySection) taskActivitySection.style.display = "none";
   }
 
   modalOverlay.classList.add("open");

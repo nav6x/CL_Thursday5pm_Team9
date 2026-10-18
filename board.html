@@ -166,6 +166,14 @@
             </div>
           </div>
         </div>
+        <div class="field" id="taskActivitySection" style="display:none;">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Activity</span>
+            <span id="activityCountBadge" style="font-size:0.75rem; color:var(--ink-muted); font-family:var(--font-mono);"></span>
+          </label>
+          <div class="activity-log" id="activityLogContainer"></div>
+          <button type="button" class="btn-ghost activity-more-btn" id="activityMoreBtn" style="display:none;">Show older activity</button>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn-danger" id="deleteTaskBtn" style="display:none; margin-right:auto;">Delete task</button>
           <button type="button" class="btn-ghost" id="cancelTaskBtn">Cancel</button>
