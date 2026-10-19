@@ -96,7 +96,7 @@ def create_task(project_id):
             {"task_id": task["id"], "user_id": uid} for uid in valid_uids
         ]).execute()
 
-        column_name = _safely(lambda: activity.column_names([column_id]).get(column_id))
+    column_name = _safely(lambda: activity.column_names([column_id]).get(column_id))
     _log(project_id, task["id"], task["name"], [activity.event(activity.TASK_CREATED, column=column_name)])
 
     try:
