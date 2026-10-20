@@ -28,6 +28,8 @@ let cachedColumns = [];
 
 let activeFilterTag = "all";
 let activeFilterPriority = "all";
+let activeFilterAssignee = "all";
+let activeFilterDue = "all";
 let searchFilterText = "";
 
 const boardEl = document.getElementById("board");
