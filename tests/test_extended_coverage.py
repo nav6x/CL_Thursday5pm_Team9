@@ -5,8 +5,8 @@ Extended test suite designed to maximize backend code coverage across:
 - routes/columns.py (list_columns, rename with position)
 - routes/notifications.py (invalid limit fallback)
 - routes/projects.py (list_my_projects, list_members, add/update/delete member, add_all, update/delete project)
-- routes/tasks.py (delete_task, set_assignees, list_task_activity)
-- routes/auth.py (MFA enroll, confirm, status, unenroll, verify-login)
+- routes/tasks.py (list_tasks, delete_task, set_assignees, list_task_activity)
+- routes/auth.py (MFA enroll, confirm, status, unenroll, verify-login, resend_verification, list_users)
 """
 import os
 import sys
@@ -146,7 +146,6 @@ def test_get_role_in_project_roles(monkeypatch):
 
 
 def test_get_role_in_project_fallback_creator(monkeypatch):
-    # First call for project_members returns None, second call for projects returns created_by
     calls = []
     def fake_maybe_one(query):
         calls.append(query)
@@ -452,8 +451,29 @@ def test_projects_update_and_remove_member(monkeypatch):
 
 
 # ============================================================================
-# 6. routes/tasks.py (delete_task, set_assignees, activity)
+# 6. routes/tasks.py (list_tasks, delete_task, set_assignees, activity)
 # ============================================================================
+
+def test_tasks_list_tasks(monkeypatch):
+    test_app = Flask(__name__)
+    mock_supabase = MagicMock()
+    mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+        {"id": "t1", "name": "Task 1", "project_id": "p1"}
+    ]
+    mock_supabase.table.return_value.select.return_value.in_.return_value.execute.return_value.data = [
+        {"task_id": "t1", "profiles": {"id": "u1", "full_name": "Dev"}}
+    ]
+    monkeypatch.setattr(tasks, "supabase", mock_supabase)
+
+    with test_app.test_request_context("/api/projects/p1/tasks", method="GET"):
+        g.user = SimpleNamespace(id="u1")
+        res, code = tasks.list_tasks.__wrapped__("p1")
+        assert code == 200
+        data = res.get_json()
+        assert len(data) == 1
+        assert data[0]["name"] == "Task 1"
+        assert len(data[0]["assignees"]) == 1
+
 
 def test_tasks_delete_and_assignees(monkeypatch):
     test_app = Flask(__name__)
@@ -586,3 +606,91 @@ def test_auth_mfa_endpoints(monkeypatch):
         res, code = auth_module.verify_mfa_login()
         assert code == 200
         assert res.get_json()["access_token"] == "verified-jwt"
+
+
+# ============================================================================
+# 8. Additional Edge Case Coverage (Auth Users/Resend, Task Assignees/Listing)
+# ============================================================================
+
+def test_auth_resend_verification(monkeypatch):
+    test_app = Flask(__name__)
+    fake_auth = MagicMock()
+    monkeypatch.setattr(auth_module, "supabase_auth", fake_auth)
+
+    # Missing email
+    with test_app.test_request_context("/api/auth/resend-verification", method="POST", json={}):
+        res, code = auth_module.resend_verification()
+        assert code == 400
+        assert "email is required" in res.get_json()["error"]
+
+    # Exception from Supabase
+    fake_auth.auth.resend.side_effect = Exception("Rate limit exceeded")
+    with test_app.test_request_context("/api/auth/resend-verification", method="POST", json={"email": "alice@example.com"}):
+        res, code = auth_module.resend_verification()
+        assert code == 400
+        assert "Rate limit exceeded" in res.get_json()["error"]
+
+    # Success
+    fake_auth.auth.resend.side_effect = None
+    with test_app.test_request_context("/api/auth/resend-verification", method="POST", json={"email": "alice@example.com"}):
+        res, code = auth_module.resend_verification()
+        assert code == 200
+        assert "Verification email resent" in res.get_json()["message"]
+
+
+def test_auth_list_users_with_projects(monkeypatch):
+    test_app = Flask(__name__)
+    mock_supabase = MagicMock()
+
+    mock_supabase.table.return_value.select.return_value.execute.side_effect = [
+        SimpleNamespace(data=[{"id": "u1", "full_name": "Alice", "email": "alice@example.com"}]),
+        SimpleNamespace(data=[{"user_id": "u1", "role": "developer", "projects": {"id": "p1", "name": "Sprint 1"}}]),
+    ]
+    monkeypatch.setattr(auth_module, "supabase", mock_supabase)
+
+    with test_app.test_request_context("/api/auth/users", method="GET"):
+        res, code = auth_module.list_users()
+        assert code == 200
+        data = res.get_json()
+        assert len(data) == 1
+        assert data[0]["project_count"] == 1
+        assert data[0]["projects"][0]["name"] == "Sprint 1"
+
+
+def test_projects_add_member_with_user_id(monkeypatch):
+    test_app = Flask(__name__)
+    mock_supabase = MagicMock()
+    monkeypatch.setattr(projects, "supabase", mock_supabase)
+    monkeypatch.setattr(projects, "display_name", lambda u: "Admin")
+    monkeypatch.setattr(projects, "project_name", lambda p: "Project Alpha")
+    monkeypatch.setattr(projects, "create_notifications", lambda *a, **k: None)
+    monkeypatch.setattr(auth_utils, "get_role_in_project", lambda u, p: "leader")
+
+    calls = []
+    def fake_maybe_one(q):
+        calls.append(q)
+        if len(calls) == 1:
+            return {"id": "u2", "email": "u2@example.com", "full_name": "User Two"}
+        return None
+
+    monkeypatch.setattr(projects, "maybe_one", fake_maybe_one)
+    with test_app.test_request_context("/api/projects/p1/members", method="POST", json={"user_id": "u2", "role": "developer"}):
+        g.user = SimpleNamespace(id="u1")
+        res, code = projects.add_member.__wrapped__("p1")
+        assert code == 201
+        assert res.get_json()["message"] == "Member added"
+
+
+def test_tasks_set_assignees_database_error(monkeypatch):
+    test_app = Flask(__name__)
+    monkeypatch.setattr(tasks, "get_role_in_project", lambda u, p: "leader")
+
+    mock_supabase = MagicMock()
+    mock_supabase.table.return_value.delete.return_value.eq.return_value.execute.side_effect = Exception("DB error")
+    monkeypatch.setattr(tasks, "supabase", mock_supabase)
+
+    with test_app.test_request_context("/api/projects/p1/tasks/t1/assignees", method="PUT", json={"assignee_ids": ["u2"]}):
+        g.user = SimpleNamespace(id="u1")
+        res, code = tasks.set_assignees.__wrapped__("p1", "t1")
+        assert code == 400
+        assert "DB error" in res.get_json()["error"]
