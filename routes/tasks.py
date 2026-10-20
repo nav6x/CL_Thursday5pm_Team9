@@ -174,7 +174,7 @@ def update_task(project_id, task_id):
     if "column_id" in updates and updates["column_id"] != task.get("column_id"):
         if _is_done_column(updates["column_id"]):
             updates["completed_at"] = datetime.now(timezone.utc).isoformat()
-        else:
+        elif task.get("completed_at") or _is_done_column(task.get("column_id")):
             updates["completed_at"] = None
 
     events = _safely(lambda: activity.diff_task_update(
