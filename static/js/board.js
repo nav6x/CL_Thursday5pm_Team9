@@ -1722,3 +1722,198 @@ function escapeHtml(str) {
   div.textContent = str || "";
   return div.innerHTML;
 }
+
+// ============================================================================
+// Collapsible Sidebar & Burndown Chart (SCRUM-122)
+// ============================================================================
+const appSidebar = document.getElementById("appSidebar");
+const sidebarToggleBtn = document.getElementById("sidebarToggleBtn");
+const mobileSidebarToggle = document.getElementById("mobileSidebarToggle");
+const sidebarAvatar = document.getElementById("sidebarAvatar");
+
+if (sidebarAvatar && user?.email) {
+  sidebarAvatar.textContent = user.email.charAt(0).toUpperCase();
+}
+
+try {
+  if (localStorage.getItem("scrumptious_sidebar") === "collapsed" && appSidebar) {
+    appSidebar.classList.add("collapsed");
+  }
+} catch (e) {}
+
+if (sidebarToggleBtn && appSidebar) {
+  sidebarToggleBtn.addEventListener("click", () => {
+    appSidebar.classList.toggle("collapsed");
+    try {
+      localStorage.setItem(
+        "scrumptious_sidebar",
+        appSidebar.classList.contains("collapsed") ? "collapsed" : "expanded"
+      );
+    } catch (e) {}
+  });
+}
+
+if (mobileSidebarToggle && appSidebar) {
+  mobileSidebarToggle.addEventListener("click", () => {
+    appSidebar.classList.toggle("open");
+  });
+}
+
+// Burndown Modal (SCRUM-122)
+const burndownModalOverlay = document.getElementById("burndownModalOverlay");
+const burndownTopBtn = document.getElementById("burndownTopBtn");
+const sidebarBurndownBtn = document.getElementById("sidebarBurndownBtn");
+const sidebarBoardBtn = document.getElementById("sidebarBoardBtn");
+const closeBurndownModalBtn = document.getElementById("closeBurndownModalBtn");
+
+function openBurndownModal() {
+  if (!burndownModalOverlay) return;
+  burndownModalOverlay.classList.add("active");
+  renderBurndownChart();
+}
+
+function closeBurndownModal() {
+  if (!burndownModalOverlay) return;
+  burndownModalOverlay.classList.remove("active");
+}
+
+if (burndownTopBtn) burndownTopBtn.addEventListener("click", openBurndownModal);
+if (sidebarBurndownBtn) sidebarBurndownBtn.addEventListener("click", openBurndownModal);
+if (sidebarBoardBtn) {
+  sidebarBoardBtn.addEventListener("click", () => {
+    closeBurndownModal();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+if (closeBurndownModalBtn) closeBurndownModalBtn.addEventListener("click", closeBurndownModal);
+if (burndownModalOverlay) {
+  burndownModalOverlay.addEventListener("click", (e) => {
+    if (e.target === burndownModalOverlay) closeBurndownModal();
+  });
+}
+
+function isDoneColumn(colId) {
+  const col = (cachedColumns || []).find(c => c.id === colId);
+  const name = (col?.name || "").toLowerCase();
+  return name.includes("done") || name.includes("complete");
+}
+
+function renderBurndownChart() {
+  const svg = document.getElementById("burndownSvg");
+  if (!svg) return;
+
+  const totalPoints = (cachedTasks || []).reduce((sum, t) => sum + (parseInt(t.story_points, 10) || 0), 0);
+  
+  // Calculate completed tasks
+  const completedTasks = (cachedTasks || []).filter(t => isDoneColumn(t.column_id));
+  const completedPoints = completedTasks.reduce((sum, t) => sum + (parseInt(t.story_points, 10) || 0), 0);
+  const remainingPoints = Math.max(0, totalPoints - completedPoints);
+  const rate = totalPoints > 0 ? Math.round((completedPoints / totalPoints) * 100) : 0;
+
+  const bdTotal = document.getElementById("bdTotalPoints");
+  const bdDone = document.getElementById("bdCompletedPoints");
+  const bdRem = document.getElementById("bdRemainingPoints");
+  const bdRate = document.getElementById("bdCompletionRate");
+  if (bdTotal) bdTotal.textContent = totalPoints;
+  if (bdDone) bdDone.textContent = completedPoints;
+  if (bdRem) bdRem.textContent = remainingPoints;
+  if (bdRate) bdRate.textContent = `${rate}%`;
+
+  // Timeline dates: 14-day sprint
+  const now = new Date();
+  const sprintDays = 14;
+  const dates = [];
+  for (let i = sprintDays - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(now.getDate() - i);
+    dates.push(d);
+  }
+
+  // Calculate actual remaining points over the timeline
+  const actualPointsOverTime = dates.map((d, index) => {
+    const dayEnd = new Date(d);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    let finishedByDay = 0;
+    for (const t of (cachedTasks || [])) {
+      if (!isDoneColumn(t.column_id)) continue;
+      const compDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at || now);
+      if (compDate <= dayEnd) {
+        finishedByDay += (parseInt(t.story_points, 10) || 0);
+      }
+    }
+    return Math.max(0, totalPoints - finishedByDay);
+  });
+
+  const width = 680;
+  const height = 300;
+  const padLeft = 45;
+  const padRight = 30;
+  const padTop = 30;
+  const padBottom = 45;
+  const chartW = width - padLeft - padRight;
+  const chartH = height - padTop - padBottom;
+
+  const maxVal = Math.max(totalPoints, 10);
+
+  function getY(val) {
+    return padTop + chartH - (val / maxVal) * chartH;
+  }
+  function getX(idx) {
+    return padLeft + (idx / (sprintDays - 1)) * chartW;
+  }
+
+  let svgHtml = "";
+
+  // Grid lines & Y-axis labels
+  const steps = 4;
+  for (let i = 0; i <= steps; i++) {
+    const val = Math.round((maxVal / steps) * i);
+    const y = getY(val);
+    svgHtml += `<line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="var(--border)" stroke-dasharray="3,3" stroke-width="1"/>`;
+    svgHtml += `<text x="${padLeft - 8}" y="${y + 4}" fill="var(--ink-muted)" font-size="11" text-anchor="end">${val}</text>`;
+  }
+
+  // X-axis date labels
+  dates.forEach((d, i) => {
+    if (i % 2 === 0 || i === sprintDays - 1) {
+      const x = getX(i);
+      const label = `${d.getDate()}/${d.getMonth() + 1}`;
+      svgHtml += `<text x="${x}" y="${height - padBottom + 20}" fill="var(--ink-muted)" font-size="10" text-anchor="middle">${label}</text>`;
+    }
+  });
+
+  // Ideal Burndown Line (dashed)
+  const idealStart = { x: getX(0), y: getY(totalPoints) };
+  const idealEnd = { x: getX(sprintDays - 1), y: getY(0) };
+  svgHtml += `<line x1="${idealStart.x}" y1="${idealStart.y}" x2="${idealEnd.x}" y2="${idealEnd.y}" stroke="#94A3B8" stroke-dasharray="5,5" stroke-width="2"/>`;
+
+  // Actual Points Path
+  let pathD = "";
+  const points = [];
+  actualPointsOverTime.forEach((val, i) => {
+    const x = getX(i);
+    const y = getY(val);
+    points.push({ x, y, val, date: dates[i] });
+    pathD += (i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+  });
+
+  // Area under line
+  if (points.length > 0) {
+    const areaD = `${pathD} L ${points[points.length - 1].x} ${height - padBottom} L ${points[0].x} ${height - padBottom} Z`;
+    svgHtml += `<path d="${areaD}" fill="var(--accent)" fill-opacity="0.12"/>`;
+  }
+
+  svgHtml += `<path d="${pathD}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+  // Circles for each point
+  points.forEach(p => {
+    svgHtml += `
+      <circle cx="${p.x}" cy="${p.y}" r="4.5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2.5">
+        <title>${p.date.toLocaleDateString()}: ${p.val} pts remaining</title>
+      </circle>
+    `;
+  });
+
+  svg.innerHTML = svgHtml;
+}
