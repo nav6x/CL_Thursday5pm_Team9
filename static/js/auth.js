@@ -19,6 +19,12 @@ if (getToken()) window.location.href = "board.html";
   const authType = hashParams.get("type") || searchParams.get("type");
   const errorDesc = hashParams.get("error_description") || searchParams.get("error_description");
 
+  // If a password recovery link lands on index.html, forward it to reset-password.html
+  if (authType === "recovery" || (hashParams.get("access_token") && authType === "recovery")) {
+    window.location.href = "reset-password.html" + window.location.hash + window.location.search;
+    return;
+  }
+
   if (errorDesc) {
     errorBox.textContent = decodeURIComponent(errorDesc.replace(/\+/g, " "));
     errorBox.style.color = "#991B1B";
@@ -44,11 +50,14 @@ switchLink.addEventListener("click", (e) => {
   updateFormMode();
 });
 
+const forgotLink = document.getElementById("forgotLink");
+
 function updateFormMode() {
   errorBox.style.display = "none";
   if (mode === "signup") {
     nameField.style.display = "flex";
     fullNameInput.required = true;
+    if (forgotLink) forgotLink.style.display = "none";
     passwordInput.setAttribute("autocomplete", "new-password");
     formTitle.textContent = "Create your account";
     formSubtitle.textContent = "Set up a login for your sprint board.";
@@ -59,6 +68,7 @@ function updateFormMode() {
     nameField.style.display = "none";
     fullNameInput.required = false;
     fullNameInput.value = "";
+    if (forgotLink) forgotLink.style.display = "block";
     passwordInput.setAttribute("autocomplete", "current-password");
     formTitle.textContent = "Welcome back";
     formSubtitle.textContent = "Log in to collaborate on your sprint backlog.";

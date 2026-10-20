@@ -147,3 +147,23 @@ def test_reset_uses_service_client_for_update_and_anon_client_for_verify(ctx):
     # The admin call must go through the service-role client, never the anon one.
     ctx.service.auth.admin.update_user_by_id.assert_called_once()
     ctx.anon.auth.admin.update_user_by_id.assert_not_called()
+
+
+def test_reset_succeeds_with_valid_access_token(ctx):
+    ctx.anon.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(id="user-456"))
+    res = ctx.client.post(RESET, json={"access_token": "valid-recovery-jwt", "password": GOOD_PASSWORD})
+
+    assert res.status_code == 200
+    ctx.anon.auth.get_user.assert_called_once_with("valid-recovery-jwt")
+    ctx.service.auth.admin.update_user_by_id.assert_called_once_with(
+        "user-456", {"password": GOOD_PASSWORD}
+    )
+
+
+def test_reset_rejects_invalid_access_token(ctx):
+    ctx.anon.auth.get_user.side_effect = Exception("Invalid token")
+    res = ctx.client.post(RESET, json={"access_token": "expired-jwt", "password": GOOD_PASSWORD})
+
+    assert res.status_code == 400
+    assert "invalid or has expired" in res.get_json()["error"]
+    ctx.service.auth.admin.update_user_by_id.assert_not_called()

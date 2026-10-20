@@ -22,6 +22,7 @@ const newPasswordInput = document.getElementById("newPassword");
 const confirmPasswordInput = document.getElementById("confirmPassword");
 
 let tokenHash = null;
+let recoveryAccessToken = null;
 
 /* ---------- messages (same look as the login page) ---------- */
 
@@ -44,20 +45,24 @@ function hideMessage() {
 
   const linkError = hash.get("error_description") || query.get("error_description");
   const token = query.get("token_hash");
-  const type = query.get("type");
+  const accessToken = hash.get("access_token");
+  const type = hash.get("type") || query.get("type");
 
   if (linkError) {
     showMessage("This reset link is invalid or has expired. Request a new one below.", "error");
-  } else if (query.get("code") && !token) {
-    console.warn("Reset link uses ?code= (PKCE). Update the Supabase Reset Password email template to use token_hash.");
-    showMessage("This reset link isn't valid. Request a new one below.", "error");
+  } else if (accessToken && (!type || type === "recovery")) {
+    recoveryAccessToken = accessToken;
+    showResetStep();
   } else if (token && (!type || type === "recovery")) {
     tokenHash = token;
     showResetStep();
+  } else if (query.get("code") && !token && !accessToken) {
+    console.warn("Reset link uses ?code= (PKCE).");
+    showMessage("This reset link isn't valid. Request a new one below.", "error");
   }
 
   // Keep the token out of the address bar and browser history.
-  if (token || linkError || query.get("code")) {
+  if (token || accessToken || linkError || query.get("code") || window.location.hash) {
     history.replaceState(null, "", window.location.pathname);
   }
 })();
@@ -117,10 +122,22 @@ resetForm.addEventListener("submit", async (e) => {
   resetBtn.disabled = true;
   resetBtn.textContent = "Saving…";
 
+  const payload = { password: newPasswordInput.value };
+  if (recoveryAccessToken) {
+    payload.access_token = recoveryAccessToken;
+  } else if (tokenHash) {
+    payload.token_hash = tokenHash;
+  } else {
+    showMessage("This reset link is invalid or has expired. Request a new one.", "error");
+    resetBtn.disabled = false;
+    resetBtn.textContent = originalLabel;
+    return;
+  }
+
   try {
     await api("/auth/reset-password", {
       method: "POST",
-      body: { token_hash: tokenHash, password: newPasswordInput.value },
+      body: payload,
     });
     showToast("Password updated. Log in with your new password.", "success");
     resetForm.style.display = "none";

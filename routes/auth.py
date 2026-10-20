@@ -20,13 +20,35 @@ def signup():
     if not email or not password or not full_name:
         return jsonify({"error": "email, password, and full_name are required"}), 400
 
+    # Prevent duplicate signup if email is already in our profiles
+    try:
+        profile_res = supabase.table("profiles").select("id").eq("email", email).execute()
+        if isinstance(profile_res.data, list) and len(profile_res.data) > 0:
+            return jsonify({
+                "error": "An account with this email is already registered. Please log in or reset your password."
+            }), 400
+    except Exception:
+        pass
+
     try:
         result = supabase_auth.auth.sign_up({"email": email, "password": password})
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        err_msg = str(e)
+        if "already registered" in err_msg.lower() or "already exists" in err_msg.lower():
+            return jsonify({
+                "error": "An account with this email is already registered. Please log in or reset your password."
+            }), 400
+        return jsonify({"error": err_msg}), 400
 
     if result.user is None:
         return jsonify({"error": "Signup failed"}), 400
+
+    # Supabase user enumeration prevention returns an empty identities list when email already exists
+    identities = getattr(result.user, "identities", None)
+    if isinstance(identities, list) and len(identities) == 0:
+        return jsonify({
+            "error": "An account with this email is already registered. Please log in or reset your password."
+        }), 400
 
     # Mirror the new user into our own profiles table so we can join
     # on it elsewhere (project_members, tasks.created_by, etc.)
@@ -302,24 +324,33 @@ def forgot_password():
 
 @auth_bp.route("/reset-password", methods=["POST"])
 def reset_password():
-    """Checks the emailed recovery token, then sets the new password."""
+    """Checks the emailed recovery token or access_token, then sets the new password."""
     body = request.get_json(force=True)
     token_hash = body.get("token_hash", "").strip()
+    access_token = body.get("access_token", "").strip()
     password = body.get("password", "")
 
-    if not token_hash:
+    if not token_hash and not access_token:
         return jsonify({"error": "This reset link is invalid or has expired. Request a new one."}), 400
     if len(password) < MIN_PASSWORD_LENGTH:
         return jsonify({"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters."}), 400
     if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
         return jsonify({"error": "Password must include at least one letter and one number."}), 400
 
-    # The token is single-use: verify_otp checks it and tells us which user it belongs to.
-    try:
-        result = supabase_auth.auth.verify_otp({"token_hash": token_hash, "type": "recovery"})
-        user = result.user
-    except Exception:
-        return jsonify({"error": "This reset link is invalid or has expired. Request a new one."}), 400
+    user = None
+    if access_token:
+        try:
+            user_response = supabase_auth.auth.get_user(access_token)
+            user = user_response.user
+        except Exception:
+            return jsonify({"error": "This reset link is invalid or has expired. Request a new one."}), 400
+    elif token_hash:
+        # The token is single-use: verify_otp checks it and tells us which user it belongs to.
+        try:
+            result = supabase_auth.auth.verify_otp({"token_hash": token_hash, "type": "recovery"})
+            user = result.user
+        except Exception:
+            return jsonify({"error": "This reset link is invalid or has expired. Request a new one."}), 400
 
     if user is None:
         return jsonify({"error": "This reset link is invalid or has expired. Request a new one."}), 400

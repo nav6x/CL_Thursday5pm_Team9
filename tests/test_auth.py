@@ -120,6 +120,60 @@ class TestSignup(unittest.TestCase):
                 actual = "already registered" in response.get_json()["error"]
                 self.assertTrue(expected == actual)
 
+    def test_signup_rejects_duplicate_email_in_profiles(self):
+        """If an email already exists in profiles, reject with a user-friendly error."""
+        mock_supabase = MagicMock()
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[{"id": "existing-user-id"}]
+        )
+        mock_supabase_auth = MagicMock()
+
+        with patch.object(auth, "supabase", mock_supabase), \
+                patch.object(auth, "supabase_auth", mock_supabase_auth):
+            with flask_app.test_request_context(
+                "/api/auth/signup",
+                method="POST",
+                json={
+                    "email": "existing@example.com",
+                    "password": "hunter2",
+                    "full_name": "Existing User",
+                },
+            ):
+                response, status_code = auth.signup()
+                self.assertEqual(status_code, 400)
+                self.assertIn("already registered", response.get_json()["error"])
+                mock_supabase_auth.auth.sign_up.assert_not_called()
+
+    def test_signup_rejects_user_with_empty_identities(self):
+        """Supabase returns empty identities list when email already exists."""
+        fake_user = MagicMock()
+        fake_user.id = "user-123"
+        fake_user.identities = []
+        fake_auth_result = MagicMock()
+        fake_auth_result.user = fake_user
+
+        mock_supabase_auth = MagicMock()
+        mock_supabase_auth.auth.sign_up.return_value = fake_auth_result
+        mock_supabase = MagicMock()
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+            data=[]
+        )
+
+        with patch.object(auth, "supabase_auth", mock_supabase_auth), \
+                patch.object(auth, "supabase", mock_supabase):
+            with flask_app.test_request_context(
+                "/api/auth/signup",
+                method="POST",
+                json={
+                    "email": "existing@example.com",
+                    "password": "hunter2",
+                    "full_name": "Existing User",
+                },
+            ):
+                response, status_code = auth.signup()
+                self.assertEqual(status_code, 400)
+                self.assertIn("already registered", response.get_json()["error"])
+
 
 class TestLogin(unittest.TestCase):
 
