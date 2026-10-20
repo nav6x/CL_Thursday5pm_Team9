@@ -32,6 +32,7 @@
   --ink: #F1F5F9;
   --ink-muted: #94A3B8;
   --border: #1E293B;
+  --accent: #818CF8;
   --accent-light: #1E1B4B;
   --high-bg: #431407;
   --high-text: #FDBA74;
@@ -76,18 +77,22 @@
 }
 
 [data-theme="dark"][data-accent="cyan"] {
+  --accent: #38BDF8;
   --accent-light: #082F49;
 }
 
 [data-theme="dark"][data-accent="emerald"] {
+  --accent: #34D399;
   --accent-light: #022C22;
 }
 
 [data-theme="dark"][data-accent="amber"] {
+  --accent: #FBBF24;
   --accent-light: #451A03;
 }
 
 [data-theme="dark"][data-accent="rose"] {
+  --accent: #FB7185;
   --accent-light: #4C0519;
 }
 

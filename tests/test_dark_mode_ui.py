@@ -372,7 +372,6 @@ class TestDarkThemeAccents(unittest.TestCase):
 
         self.assertTrue(ratio >= WCAG_AA_TEXT, f"indigo selected card is only {ratio:.2f}:1")
 
-    @unittest.expectedFailure
     def test_accent_coloured_text_meets_wcag_aa_on_dark_cards_for_every_accent(self):
         """
         KNOWN ISSUE (expected failure): .settings-tab-btn.active and .add-column:hover use
