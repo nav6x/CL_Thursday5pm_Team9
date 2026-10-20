@@ -241,7 +241,7 @@ function packTaskDescription(tags, due, checklist, comments, cleanDesc) {
 function updateSprintSummary() {
   if (!metricTasksCount) return;
   const totalTasks = cachedTasks.length;
-  const totalPoints = cachedTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+  const totalPoints = cachedTasks.reduce((sum, t) => sum + (parseInt(t.story_points, 10) || 0), 0);
   const urgentTasks = cachedTasks.filter(t => t.priority === "high").length;
 
   const doneColIds = cachedColumns
@@ -252,10 +252,10 @@ function updateSprintSummary() {
   const percent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   metricTasksCount.textContent = totalTasks;
-  metricPointsCount.textContent = `${totalPoints} pts`;
-  metricUrgentCount.textContent = urgentTasks;
-  metricProgressPercent.textContent = `${percent}%`;
-  metricProgressFill.style.width = `${percent}%`;
+  if (metricPointsCount) metricPointsCount.textContent = `${totalPoints} pts`;
+  if (metricUrgentCount) metricUrgentCount.textContent = urgentTasks;
+  if (metricProgressPercent) metricProgressPercent.textContent = `${percent}%`;
+  if (metricProgressFill) metricProgressFill.style.width = `${percent}%`;
 }
 
 async function renderBoard() {
@@ -291,18 +291,67 @@ function renderColumn(column, tasks) {
   el.className = "column";
   el.dataset.columnId = column.id;
 
-  const totalPoints = tasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+  const totalPoints = tasks.reduce((sum, t) => sum + (parseInt(t.story_points, 10) || 0), 0);
+  const isLeader = currentRole === "leader";
+  const colActionsHtml = isLeader ? `
+    <div class="column-header-actions">
+      <button type="button" class="col-action-btn" title="Rename column" data-col-action="rename">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+      </button>
+      <button type="button" class="col-action-btn danger" title="Delete column" data-col-action="delete">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+      </button>
+    </div>
+  ` : "";
 
   el.innerHTML = `
     <div class="column-header">
       <div class="column-header-title">
         <h2>${escapeHtml(column.name)}</h2>
         <span class="column-count">${tasks.length}</span>
+        ${colActionsHtml}
       </div>
       <span class="column-pts">${totalPoints} pts</span>
     </div>
     <div class="task-list"></div>
   `;
+
+  const renameBtn = el.querySelector('[data-col-action="rename"]');
+  if (renameBtn) {
+    renameBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const newName = prompt(`Rename column "${column.name}" to:`, column.name);
+      if (!newName || !newName.trim() || newName.trim() === column.name) return;
+      try {
+        await api(`/projects/${currentProject.id}/columns/${column.id}`, {
+          method: "PATCH",
+          body: { name: newName.trim() }
+        });
+        showToast(`Column renamed to "${newName.trim()}".`, "success");
+        await renderBoard();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  }
+
+  const deleteBtn = el.querySelector('[data-col-action="delete"]');
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const promptMsg = tasks.length > 0
+        ? `Column "${column.name}" contains ${tasks.length} task(s). Deleting it will also delete all tasks in it. Proceed?`
+        : `Delete column "${column.name}"?`;
+      if (!confirm(promptMsg)) return;
+      try {
+        await api(`/projects/${currentProject.id}/columns/${column.id}`, { method: "DELETE" });
+        showToast(`Column "${column.name}" deleted.`, "success");
+        await renderBoard();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  }
 
   const list = el.querySelector(".task-list");
   if (tasks.length === 0) {
@@ -443,14 +492,30 @@ function renderTaskCard(task) {
     : "";
 
   const col = cachedColumns.find(c => c.id === task.column_id);
-  const isDoneColumn = col && ((col.name || "").toLowerCase().includes("done") || (col.name || "").toLowerCase().includes("complete"));
-  const dueBadgeHtml = formatDueDateBadge(due, isDoneColumn);
+  const isDoneCol = col && ((col.name || "").toLowerCase().includes("done") || (col.name || "").toLowerCase().includes("complete"));
+  if (isDoneCol) card.classList.add("is-done");
+
+  const dueBadgeHtml = formatDueDateBadge(due, isDoneCol);
   const checklistHtml = renderCardChecklistHtml(checklist);
   const commentCountBadgeHtml = (comments && comments.length > 0)
     ? `<span class="task-comments-badge">💬 ${comments.length}</span>`
     : "";
 
   const validAssignees = (task.assignees || []).filter(Boolean);
+  card.dataset.assigneeIds = validAssignees.map(a => a.id).join(",");
+  card.dataset.due = due || "";
+  card.dataset.columnId = task.column_id;
+
+  const colIndex = (cachedColumns || []).findIndex(c => c.id === task.column_id);
+  const prevCol = colIndex > 0 ? cachedColumns[colIndex - 1] : null;
+  const nextCol = colIndex >= 0 && colIndex < cachedColumns.length - 1 ? cachedColumns[colIndex + 1] : null;
+
+  const quickMoveHtml = (prevCol || nextCol) ? `
+    <div class="task-quick-moves">
+      ${prevCol ? `<button type="button" class="card-move-btn" title="Move back to ${escapeHtml(prevCol.name)}" data-target-col="${prevCol.id}">←</button>` : ""}
+      ${nextCol ? `<button type="button" class="card-move-btn" title="Advance to ${escapeHtml(nextCol.name)}" data-target-col="${nextCol.id}">→</button>` : ""}
+    </div>
+  ` : "";
 
   card.innerHTML = `
     <h3>${escapeHtml(task.name)}</h3>
@@ -459,16 +524,39 @@ function renderTaskCard(task) {
     ${dueBadgeHtml}
     ${checklistHtml}
     <div class="task-meta">
-      <span class="priority-badge ${task.priority}">${escapeHtml(task.priority)}</span>
+      <div style="display:flex; align-items:center; gap:0.35rem;">
+        <span class="priority-badge ${task.priority}">${escapeHtml(task.priority)}</span>
+        ${isDoneCol ? `<span class="badge" style="background:rgba(16, 185, 129, 0.12); color:#10b981; font-weight:600; font-size:0.72rem; padding:0.1rem 0.45rem; border-radius:999px;">✓ Done</span>` : ""}
+      </div>
       <div style="display:flex; align-items:center; gap:0.35rem;">
         ${commentCountBadgeHtml}
         <span class="story-points">${task.story_points ?? 0} pts</span>
       </div>
+      ${quickMoveHtml}
     </div>
     <div class="assignee-stack">
       ${validAssignees.map(a => `<span class="avatar" title="${escapeHtml(a.full_name || a.email || '')}">${initials(a.full_name || a.email || 'U')}</span>`).join("")}
     </div>
   `;
+
+  card.querySelectorAll(".card-move-btn").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const targetColId = btn.dataset.targetCol;
+      if (!targetColId) return;
+      try {
+        await api(`/projects/${currentProject.id}/tasks/${task.id}`, {
+          method: "PATCH",
+          body: { column_id: targetColId }
+        });
+        const targetCol = cachedColumns.find(c => c.id === targetColId);
+        showToast(`Moved to ${targetCol?.name || "next column"}`, "success");
+        await renderBoard();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  });
 
   card.querySelectorAll(".tag-chip").forEach(chip => {
     chip.addEventListener("click", (e) => {
@@ -839,8 +927,10 @@ function openTaskModal(columnId, task = null) {
     const { tags, due, checklist, comments, desc } = parseTaskDescription(task.description);
     document.getElementById("taskDescription").value = desc || "";
     document.getElementById("taskPriority").value = task.priority || "medium";
-    document.getElementById("taskPoints").value = task.story_points ?? 1;
+    const taskPointsEl = document.getElementById("taskPoints"); if (taskPointsEl) taskPointsEl.value = task.story_points ?? 1;
     if (taskDueDate) taskDueDate.value = due || "";
+    
+    switchTaskTab("discussion");
 
     modalChecklist = (checklist || []).map(c => ({ t: c.t, d: !!c.d }));
     renderModalChecklist();
@@ -863,8 +953,10 @@ function openTaskModal(columnId, task = null) {
   } else {
     document.getElementById("modalTitle").textContent = "New Task";
     taskForm.reset();
-    document.getElementById("taskPoints").value = 1;
+    const taskPointsEl = document.getElementById("taskPoints"); if (taskPointsEl) taskPointsEl.value = 1;
     if (taskDueDate) taskDueDate.value = "";
+    
+    switchTaskTab("discussion");
     modalChecklist = [];
     renderModalChecklist();
     modalComments = [];
@@ -881,6 +973,14 @@ function openTaskModal(columnId, task = null) {
   }
 
   modalOverlay.classList.add("open");
+  setTimeout(() => {
+    const mainPanel = document.querySelector(".task-modal-main");
+    if (mainPanel) mainPanel.scrollTop = 0;
+    const sidePanel = document.querySelector(".task-modal-sidebar");
+    if (sidePanel) sidePanel.scrollTop = 0;
+    const bodyPanel = document.querySelector(".task-modal-body");
+    if (bodyPanel) bodyPanel.scrollTop = 0;
+  }, 10);
 }
 
 function resetTagChips() {
@@ -961,7 +1061,7 @@ taskForm.addEventListener("submit", async (e) => {
     name: document.getElementById("taskName").value.trim(),
     description: packedDescription,
     priority: document.getElementById("taskPriority").value,
-    story_points: parseInt(document.getElementById("taskPoints").value, 10) || 0,
+    story_points: parseInt(document.getElementById("taskPoints")?.value, 10) || 0,
   };
 
   try {
@@ -1013,18 +1113,34 @@ async function handleAddColumn() {
 function applyFilters() {
   const cards = document.querySelectorAll(".task-card");
   const query = searchFilterText.trim().toLowerCase();
+  const currentUserId = user?.id || user?.sub || "";
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   cards.forEach(card => {
     const cardName = card.dataset.name || "";
     const cardDesc = card.dataset.desc || "";
     const cardPriority = card.dataset.priority || "";
     const cardTags = (card.dataset.tags || "").split(",").filter(Boolean);
+    const cardAssigneeIds = (card.dataset.assigneeIds || "").split(",").filter(Boolean);
+    const cardDue = card.dataset.due || "";
+    const cardColId = card.dataset.columnId || "";
 
     const matchesSearch = !query || cardName.includes(query) || cardDesc.includes(query);
     const matchesPriority = activeFilterPriority === "all" || cardPriority === activeFilterPriority;
     const matchesTag = activeFilterTag === "all" || cardTags.includes(activeFilterTag.toLowerCase());
 
-    if (matchesSearch && matchesPriority && matchesTag) {
+    let matchesAssignee = true;
+    if (activeFilterAssignee === "my_tasks") {
+      matchesAssignee = currentUserId ? cardAssigneeIds.includes(currentUserId) : false;
+    }
+
+    let matchesDue = true;
+    if (activeFilterDue === "overdue") {
+      const isDone = isDoneColumn(cardColId);
+      matchesDue = Boolean(cardDue && cardDue < todayStr && !isDone);
+    }
+
+    if (matchesSearch && matchesPriority && matchesTag && matchesAssignee && matchesDue) {
       card.style.display = "";
     } else {
       card.style.display = "none";
@@ -1768,12 +1884,14 @@ const closeBurndownModalBtn = document.getElementById("closeBurndownModalBtn");
 
 function openBurndownModal() {
   if (!burndownModalOverlay) return;
+  burndownModalOverlay.classList.add("open");
   burndownModalOverlay.classList.add("active");
   renderBurndownChart();
 }
 
 function closeBurndownModal() {
   if (!burndownModalOverlay) return;
+  burndownModalOverlay.classList.remove("open");
   burndownModalOverlay.classList.remove("active");
 }
 
@@ -1802,10 +1920,11 @@ function renderBurndownChart() {
   const svg = document.getElementById("burndownSvg");
   if (!svg) return;
 
-  const totalPoints = (cachedTasks || []).reduce((sum, t) => sum + (parseInt(t.story_points, 10) || 0), 0);
+  const tasks = cachedTasks || [];
+  const totalPoints = tasks.reduce((sum, t) => sum + (parseInt(t.story_points, 10) || 0), 0);
   
-  // Calculate completed tasks
-  const completedTasks = (cachedTasks || []).filter(t => isDoneColumn(t.column_id));
+  // Calculate completed tasks and points
+  const completedTasks = tasks.filter(t => isDoneColumn(t.column_id));
   const completedPoints = completedTasks.reduce((sum, t) => sum + (parseInt(t.story_points, 10) || 0), 0);
   const remainingPoints = Math.max(0, totalPoints - completedPoints);
   const rate = totalPoints > 0 ? Math.round((completedPoints / totalPoints) * 100) : 0;
@@ -1814,45 +1933,77 @@ function renderBurndownChart() {
   const bdDone = document.getElementById("bdCompletedPoints");
   const bdRem = document.getElementById("bdRemainingPoints");
   const bdRate = document.getElementById("bdCompletionRate");
-  if (bdTotal) bdTotal.textContent = totalPoints;
-  if (bdDone) bdDone.textContent = completedPoints;
-  if (bdRem) bdRem.textContent = remainingPoints;
+  if (bdTotal) bdTotal.textContent = `${totalPoints} pts`;
+  if (bdDone) bdDone.textContent = `${completedPoints} pts`;
+  if (bdRem) bdRem.textContent = `${remainingPoints} pts`;
   if (bdRate) bdRate.textContent = `${rate}%`;
 
-  // Timeline dates: 14-day sprint
-  const now = new Date();
-  const sprintDays = 14;
-  const dates = [];
-  for (let i = sprintDays - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(now.getDate() - i);
-    dates.push(d);
+  const width = 680;
+  const height = 300;
+  const padLeft = 52;
+  const padRight = 35;
+  const padTop = 35;
+  const padBottom = 45;
+  const chartW = width - padLeft - padRight;
+  const chartH = height - padTop - padBottom;
+
+  // Empty state handling
+  if (totalPoints === 0) {
+    svg.innerHTML = `
+      <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"/>
+      <text x="${width/2}" y="${height/2 - 8}" fill="var(--ink)" font-size="13" font-weight="600" text-anchor="middle">No Story Points in Active Sprint</text>
+      <text x="${width/2}" y="${height/2 + 16}" fill="var(--ink-muted)" font-size="11.5" text-anchor="middle">Add story points (1–10) to tasks on the board to visualize burndown velocity.</text>
+    `;
+    return;
   }
 
-  // Calculate actual remaining points over the timeline
-  const actualPointsOverTime = dates.map((d, index) => {
-    const dayEnd = new Date(d);
+  // 14-day sprint timeline
+  const sprintDays = 14;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  // Determine sprint start date (project creation or current active 14-day cycle)
+  let sprintStart = currentProject?.created_at ? new Date(currentProject.created_at) : new Date();
+  sprintStart.setHours(0, 0, 0, 0);
+
+  const daysSinceStart = Math.floor((now - sprintStart) / (1000 * 60 * 60 * 24));
+  if (daysSinceStart >= sprintDays) {
+    sprintStart = new Date(now);
+    sprintStart.setDate(now.getDate() - (daysSinceStart % sprintDays));
+  }
+
+  // Generate 14-day range
+  const dates = [];
+  let todayIdx = 0;
+  for (let i = 0; i < sprintDays; i++) {
+    const d = new Date(sprintStart);
+    d.setDate(sprintStart.getDate() + i);
+    dates.push(d);
+    if (d.getTime() === now.getTime()) {
+      todayIdx = i;
+    }
+  }
+
+  // Calculate actual remaining points ONLY up to todayIdx
+  const actualPointsOverTime = [];
+  for (let i = 0; i <= todayIdx; i++) {
+    const dayEnd = new Date(dates[i]);
     dayEnd.setHours(23, 59, 59, 999);
 
     let finishedByDay = 0;
-    for (const t of (cachedTasks || [])) {
+    for (const t of tasks) {
       if (!isDoneColumn(t.column_id)) continue;
       const compDate = t.completed_at ? new Date(t.completed_at) : new Date(t.created_at || now);
       if (compDate <= dayEnd) {
         finishedByDay += (parseInt(t.story_points, 10) || 0);
       }
     }
-    return Math.max(0, totalPoints - finishedByDay);
-  });
-
-  const width = 680;
-  const height = 300;
-  const padLeft = 45;
-  const padRight = 30;
-  const padTop = 30;
-  const padBottom = 45;
-  const chartW = width - padLeft - padRight;
-  const chartH = height - padTop - padBottom;
+    actualPointsOverTime.push({
+      idx: i,
+      val: Math.max(0, totalPoints - finishedByDay),
+      date: dates[i]
+    });
+  }
 
   const maxVal = Math.max(totalPoints, 10);
 
@@ -1871,7 +2022,7 @@ function renderBurndownChart() {
     const val = Math.round((maxVal / steps) * i);
     const y = getY(val);
     svgHtml += `<line x1="${padLeft}" y1="${y}" x2="${width - padRight}" y2="${y}" stroke="var(--border)" stroke-dasharray="3,3" stroke-width="1"/>`;
-    svgHtml += `<text x="${padLeft - 8}" y="${y + 4}" fill="var(--ink-muted)" font-size="11" text-anchor="end">${val}</text>`;
+    svgHtml += `<text x="${padLeft - 10}" y="${y + 4}" fill="var(--ink-muted)" font-size="10.5" text-anchor="end">${val} pts</text>`;
   }
 
   // X-axis date labels
@@ -1879,26 +2030,35 @@ function renderBurndownChart() {
     if (i % 2 === 0 || i === sprintDays - 1) {
       const x = getX(i);
       const label = `${d.getDate()}/${d.getMonth() + 1}`;
-      svgHtml += `<text x="${x}" y="${height - padBottom + 20}" fill="var(--ink-muted)" font-size="10" text-anchor="middle">${label}</text>`;
+      svgHtml += `<text x="${x}" y="${height - padBottom + 18}" fill="var(--ink-muted)" font-size="10" font-weight="600" text-anchor="middle">Day ${i + 1}</text>`;
+      svgHtml += `<text x="${x}" y="${height - padBottom + 30}" fill="var(--ink-muted)" font-size="9" text-anchor="middle">${label}</text>`;
     }
   });
+
+  // Today indicator line
+  const todayX = getX(todayIdx);
+  svgHtml += `
+    <line x1="${todayX}" y1="${padTop}" x2="${todayX}" y2="${height - padBottom}" stroke="var(--accent)" stroke-dasharray="3,3" stroke-width="1.5" opacity="0.5"/>
+    <rect x="${todayX - 25}" y="${padTop - 22}" width="50" height="17" rx="8.5" fill="var(--accent)" opacity="0.15"/>
+    <text x="${todayX}" y="${padTop - 10}" fill="var(--accent)" font-size="9" font-weight="700" text-anchor="middle">TODAY</text>
+  `;
 
   // Ideal Burndown Line (dashed)
   const idealStart = { x: getX(0), y: getY(totalPoints) };
   const idealEnd = { x: getX(sprintDays - 1), y: getY(0) };
   svgHtml += `<line x1="${idealStart.x}" y1="${idealStart.y}" x2="${idealEnd.x}" y2="${idealEnd.y}" stroke="#94A3B8" stroke-dasharray="5,5" stroke-width="2"/>`;
 
-  // Actual Points Path
+  // Actual Points Path (only plotted up to today!)
   let pathD = "";
   const points = [];
-  actualPointsOverTime.forEach((val, i) => {
-    const x = getX(i);
-    const y = getY(val);
-    points.push({ x, y, val, date: dates[i] });
-    pathD += (i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+  actualPointsOverTime.forEach((pt) => {
+    const x = getX(pt.idx);
+    const y = getY(pt.val);
+    points.push({ x, y, val: pt.val, date: pt.date, isToday: pt.idx === todayIdx });
+    pathD += (pt.idx === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
   });
 
-  // Area under line
+  // Area under actual line
   if (points.length > 0) {
     const areaD = `${pathD} L ${points[points.length - 1].x} ${height - padBottom} L ${points[0].x} ${height - padBottom} Z`;
     svgHtml += `<path d="${areaD}" fill="var(--accent)" fill-opacity="0.12"/>`;
@@ -1906,10 +2066,11 @@ function renderBurndownChart() {
 
   svgHtml += `<path d="${pathD}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
 
-  // Circles for each point
+  // Circles for each elapsed day
   points.forEach(p => {
+    const r = p.isToday ? 5.5 : 4.5;
     svgHtml += `
-      <circle cx="${p.x}" cy="${p.y}" r="4.5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2.5">
+      <circle cx="${p.x}" cy="${p.y}" r="${r}" fill="var(--surface)" stroke="var(--accent)" stroke-width="${p.isToday ? 3 : 2}">
         <title>${p.date.toLocaleDateString()}: ${p.val} pts remaining</title>
       </circle>
     `;
@@ -1917,3 +2078,55 @@ function renderBurndownChart() {
 
   svg.innerHTML = svgHtml;
 }
+
+// Tab switching for Edit Task modal
+function switchTaskTab(tabName) {
+  const discBtn = document.getElementById("tabDiscussionBtn");
+  const actBtn = document.getElementById("tabActivityBtn");
+  const discContent = document.getElementById("tabDiscussionContent");
+  const actContent = document.getElementById("tabActivityContent");
+
+  if (tabName === "activity") {
+    if (discBtn) discBtn.classList.remove("active");
+    if (actBtn) actBtn.classList.add("active");
+    if (discContent) discContent.style.display = "none";
+    if (actContent) actContent.style.display = "block";
+  } else {
+    if (discBtn) discBtn.classList.add("active");
+    if (actBtn) actBtn.classList.remove("active");
+    if (discContent) discContent.style.display = "block";
+    if (actContent) actContent.style.display = "none";
+  }
+}
+
+const tabDiscussionBtn = document.getElementById("tabDiscussionBtn");
+const tabActivityBtn = document.getElementById("tabActivityBtn");
+const closeTaskModalBtn = document.getElementById("closeTaskModalBtn");
+
+if (tabDiscussionBtn) tabDiscussionBtn.addEventListener("click", () => switchTaskTab("discussion"));
+if (tabActivityBtn) tabActivityBtn.addEventListener("click", () => switchTaskTab("activity"));
+if (closeTaskModalBtn) closeTaskModalBtn.addEventListener("click", closeTaskModal);
+
+if (modalOverlay) {
+  modalOverlay.addEventListener("click", (e) => {
+    if (e.target === modalOverlay) modalOverlay.classList.remove("open");
+  });
+}
+
+document.querySelectorAll("[data-filter-assignee]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter-assignee]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeFilterAssignee = btn.dataset.filterAssignee;
+    applyFilters();
+  });
+});
+
+document.querySelectorAll("[data-filter-due]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter-due]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeFilterDue = btn.dataset.filterDue;
+    applyFilters();
+  });
+});

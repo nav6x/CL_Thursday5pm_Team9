@@ -22,9 +22,27 @@
       <div class="sidebar-brand-box">
         <div class="topbar-brand">
           <div class="brand-icon">
-            <svg viewBox="0 0 24 24"><path d="M4 6h4v12H4V6zm6 4h4v8h-4v-8zm6 4h4v4h-4v-4z"/></svg>
-          </div>
-          <span class="brand-name">Scrumptious</span>
+          <svg width="22" height="22" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="scrumTopGrad" x1="4" y1="4" x2="24" y2="13" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#FFFFFF"/>
+                <stop offset="100%" stop-color="#E0E7FF"/>
+              </linearGradient>
+              <linearGradient id="scrumBotGrad" x1="4" y1="15" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#67E8F9"/>
+                <stop offset="100%" stop-color="#FFFFFF"/>
+              </linearGradient>
+            </defs>
+            <!-- Top agile card fold -->
+            <path d="M5 7C5 5.34315 6.34315 4 8 4H18C20.2091 4 22 5.79086 22 8C22 10.2091 20.2091 12 18 12H8C6.34315 12 5 10.6569 5 9V7Z" fill="url(#scrumTopGrad)"/>
+            <!-- Bottom agile card fold -->
+            <path d="M23 21C23 22.6569 21.6569 24 20 24H10C7.79086 24 6 22.2091 6 20C6 17.7909 7.79086 16 10 16H20C21.6569 16 23 17.3431 23 19V21Z" fill="url(#scrumBotGrad)"/>
+            <!-- Agile Velocity Nodes -->
+            <circle cx="18" cy="8" r="1.6" fill="#4F46E5"/>
+            <circle cx="10" cy="20" r="1.6" fill="#0284C7"/>
+          </svg>
+        </div>
+          <span class="brand-name">Scrumptious<span class="brand-dot">.</span></span>
         </div>
         <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Toggle sidebar">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -40,12 +58,13 @@
         <select id="projectSelect" class="project-select" style="display:none; width:100%; margin-bottom:0.45rem;"></select>
         <div class="sidebar-project-btns">
           <button class="btn-secondary btn-sm" id="allProjectsBtn" title="View all projects and team access">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
-            Projects (<span id="totalProjectsBadge">0</span>)
+            <span>Projects</span>
+            <span class="badge-pill" id="totalProjectsBadge">0</span>
           </button>
-          <button class="btn-secondary btn-sm" id="newProjectBtn">+ New</button>
+          <button class="btn-secondary btn-sm" id="newProjectBtn" title="Create new project">+ New</button>
         </div>
       </div>
 
@@ -95,11 +114,17 @@
           </div>
         </div>
         <div class="sidebar-footer-actions">
-          <button class="icon-btn" id="settingsBtn" title="Settings">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <button class="btn-secondary btn-sm" id="settingsBtn" title="Settings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
             <span class="sidebar-btn-label">Settings</span>
           </button>
-          <button class="btn-ghost" id="logoutBtn" title="Log out">Log out</button>
+          <button class="btn-secondary btn-sm" id="logoutBtn" title="Log out">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            <span class="sidebar-btn-label">Log out</span>
+          </button>
         </div>
       </div>
     </aside>
@@ -107,7 +132,7 @@
     <!-- Main Workspace Area -->
     <div class="app-main">
       <!-- Unified Header -->
-      <div class="topbar">
+      <header class="topbar">
         <div class="topbar-left">
           <button class="mobile-sidebar-toggle" id="mobileSidebarToggle" title="Open sidebar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
@@ -117,38 +142,56 @@
           </div>
         </div>
 
-        <div class="topbar-search-filter">
+        <div class="topbar-right">
           <div class="header-search-wrap">
             <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" id="searchInput" class="search-field" placeholder="Search tasks, descriptions, assignees…">
+            <input type="text" id="searchInput" class="search-field" placeholder="Search tasks, descriptions…">
           </div>
-          <div class="filter-pills-row">
-            <div class="filter-group-inline">
-              <span class="filter-label">Priority:</span>
-              <button class="filter-pill active" data-filter-priority="all">All</button>
-              <button class="filter-pill" data-filter-priority="high">High</button>
-              <button class="filter-pill" data-filter-priority="medium">Med</button>
-              <button class="filter-pill" data-filter-priority="low">Low</button>
-            </div>
-            <div class="filter-group-inline">
-              <span class="filter-label">Tag:</span>
-              <button class="filter-pill active" data-filter-tag="all">All</button>
-              <button class="filter-pill" data-filter-tag="Frontend">Frontend</button>
-              <button class="filter-pill" data-filter-tag="Backend">Backend</button>
-              <button class="filter-pill" data-filter-tag="Bug">Bug</button>
-              <button class="filter-pill" data-filter-tag="Feature">Feature</button>
-              <button class="filter-pill" data-filter-tag="DevOps">DevOps</button>
-              <button class="filter-pill" data-filter-tag="Design">Design</button>
-            </div>
+          <div class="topbar-actions">
+            <button class="btn-primary" id="topAddTaskBtn">+ New Task</button>
           </div>
         </div>
+      </header>
 
-        <div class="topbar-actions">
-          <button class="btn-secondary" id="burndownTopBtn" title="Sprint Burndown Chart">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px; vertical-align:middle;"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
-            Burndown
-          </button>
-          <button class="btn-primary" id="topAddTaskBtn" style="width:auto; padding:0.45rem 0.95rem; font-size:0.85rem;">+ New Task</button>
+      <!-- Dedicated Board Filter & Control Toolbar -->
+      <div class="board-toolbar">
+        <div class="filter-group">
+          <span class="filter-label">Priority:</span>
+          <div class="filter-pills">
+            <button class="filter-pill active" data-filter-priority="all">All</button>
+            <button class="filter-pill" data-filter-priority="high">High</button>
+            <button class="filter-pill" data-filter-priority="medium">Med</button>
+            <button class="filter-pill" data-filter-priority="low">Low</button>
+          </div>
+        </div>
+        <div class="filter-divider"></div>
+        <div class="filter-group">
+          <span class="filter-label">Tag:</span>
+          <div class="filter-pills">
+            <button class="filter-pill active" data-filter-tag="all">All</button>
+            <button class="filter-pill" data-filter-tag="Frontend">Frontend</button>
+            <button class="filter-pill" data-filter-tag="Backend">Backend</button>
+            <button class="filter-pill" data-filter-tag="Bug">Bug</button>
+            <button class="filter-pill" data-filter-tag="Feature">Feature</button>
+            <button class="filter-pill" data-filter-tag="DevOps">DevOps</button>
+            <button class="filter-pill" data-filter-tag="Design">Design</button>
+          </div>
+        </div>
+        <div class="filter-divider"></div>
+        <div class="filter-group">
+          <span class="filter-label">Assignee:</span>
+          <div class="filter-pills">
+            <button class="filter-pill active" data-filter-assignee="all">All</button>
+            <button class="filter-pill" data-filter-assignee="my_tasks">My Tasks</button>
+          </div>
+        </div>
+        <div class="filter-divider"></div>
+        <div class="filter-group">
+          <span class="filter-label">Due:</span>
+          <div class="filter-pills">
+            <button class="filter-pill active" data-filter-due="all">All</button>
+            <button class="filter-pill" data-filter-due="overdue">Overdue</button>
+          </div>
         </div>
       </div>
 
@@ -206,92 +249,119 @@
   </div>
 
   <div class="modal-overlay" id="taskModalOverlay">
-    <div class="modal">
-      <h2 id="modalTitle">New task</h2>
-      <form id="taskForm">
-        <div class="field">
-          <label for="taskName">Name</label>
-          <input type="text" id="taskName" placeholder="e.g. Implement authentication token refresh" required>
-        </div>
-        <div class="field">
-          <label>Labels / Tags</label>
-          <div class="tag-selector-wrapper">
-            <div class="tag-selector-chips" id="tagChipsContainer">
-              <button type="button" class="tag-option-btn" data-tag="Frontend">Frontend</button>
-              <button type="button" class="tag-option-btn" data-tag="Backend">Backend</button>
-              <button type="button" class="tag-option-btn" data-tag="Bug">Bug</button>
-              <button type="button" class="tag-option-btn" data-tag="Feature">Feature</button>
-              <button type="button" class="tag-option-btn" data-tag="DevOps">DevOps</button>
-              <button type="button" class="tag-option-btn" data-tag="Design">Design</button>
+    <div class="modal task-modal">
+      <div class="task-modal-header">
+        <h2 id="modalTitle" style="margin:0; font-size:1.25rem; font-weight:700;">Edit Task</h2>
+      </div>
+
+      <form id="taskForm" class="task-modal-form">
+        <div class="task-modal-body">
+          <!-- Left Column: Primary Content -->
+          <div class="task-modal-main">
+            <div class="field">
+              <label for="taskName">Title</label>
+              <input type="text" id="taskName" class="task-title-input" placeholder="e.g. Implement authentication token refresh" required>
             </div>
-            <div style="display:flex; gap:0.4rem; margin-top:0.3rem;">
-              <input type="text" id="customTagInput" placeholder="Add custom tag…" style="font-size:0.8rem; padding:0.35rem 0.6rem; flex:1;">
-              <button type="button" class="btn-secondary" id="addCustomTagBtn" style="font-size:0.8rem; padding:0.35rem 0.65rem;">+ Add Tag</button>
+
+            <div class="field">
+              <label for="taskDescription">Description</label>
+              <textarea id="taskDescription" rows="3" placeholder="Task requirements, details, and acceptance criteria…"></textarea>
             </div>
-          </div>
-        </div>
-        <div class="field">
-          <label for="taskDescription">Description</label>
-          <textarea id="taskDescription" rows="3" placeholder="Task requirements and acceptance criteria"></textarea>
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="taskPriority">Priority</label>
-            <select id="taskPriority">
-              <option value="high">High</option>
-              <option value="medium" selected>Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="taskPoints">Story points</label>
-            <input type="number" id="taskPoints" min="0" max="10" value="1">
-          </div>
-          <div class="field">
-            <label for="taskDueDate">Due Date</label>
-            <input type="date" id="taskDueDate">
-          </div>
-        </div>
-        <div class="field">
-          <label>Subtasks / Checklist</label>
-          <div class="checklist-builder">
-            <div class="checklist-items-list" id="modalChecklistContainer"></div>
-            <div style="display:flex; gap:0.4rem; margin-top:0.4rem;">
-              <input type="text" id="newSubtaskInput" placeholder="Add a subtask item…" style="font-size:0.8rem; padding:0.35rem 0.6rem; flex:1;">
-              <button type="button" class="btn-secondary" id="addSubtaskBtn" style="font-size:0.8rem; padding:0.35rem 0.65rem;">+ Add Subtask</button>
+
+            <div class="field">
+              <label style="display:flex; justify-content:space-between; align-items:center;">
+                <span>Subtasks & Checklist</span>
+                <span id="checklistProgressBadge" style="font-size:0.75rem; color:var(--ink-muted); font-family:var(--font-mono);"></span>
+              </label>
+              <div class="checklist-builder">
+                <div class="checklist-items-list" id="modalChecklistContainer"></div>
+                <div style="display:flex; gap:0.4rem; margin-top:0.4rem;">
+                  <input type="text" id="newSubtaskInput" placeholder="Add checklist item…" style="font-size:0.82rem; padding:0.35rem 0.6rem; flex:1;">
+                  <button type="button" class="btn-secondary" id="addSubtaskBtn" style="font-size:0.82rem; padding:0.35rem 0.65rem;">+ Add</button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <div class="field">
-          <label for="taskAssignees">Assignees (Hold Ctrl or Cmd to select multiple)</label>
-          <select id="taskAssignees" multiple size="4"></select>
-          <span style="font-size:0.75rem; color:var(--ink-muted); margin-top:0.2rem;" id="assigneeHint">Assign one or more teammates to this task.</span>
-        </div>
-        <div class="field" id="taskDiscussionSection">
-          <label style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Discussion & Comments</span>
-            <span id="commentCountBadge" style="font-size:0.75rem; color:var(--ink-muted); font-family:var(--font-mono);">0 comments</span>
-          </label>
-          <div class="comments-thread" id="commentsThreadContainer"></div>
-          <div class="comment-input-box">
-            <textarea id="newCommentInput" rows="2" placeholder="Write a comment or update…"></textarea>
-            <div style="display:flex; justify-content:flex-end; margin-top:0.4rem;">
-              <button type="button" class="btn-primary" id="addCommentBtn" style="font-size:0.8rem; padding:0.35rem 0.8rem; width:auto;">Post Comment</button>
+
+            <!-- Tabbed Discussion & Activity -->
+            <div class="task-modal-tabs-wrap">
+              <div class="task-modal-tabs">
+                <button type="button" class="task-tab-btn active" id="tabDiscussionBtn">Discussion (<span id="tabCommentCount">0</span>)</button>
+                <button type="button" class="task-tab-btn" id="tabActivityBtn">Activity (<span id="tabActivityCount">0</span>)</button>
+              </div>
+
+              <!-- Discussion Tab -->
+              <div class="task-tab-content active" id="tabDiscussionContent">
+                <div class="comments-thread" id="commentsThreadContainer"></div>
+                <div class="comment-input-box" style="margin-top:0.5rem;">
+                  <textarea id="newCommentInput" rows="2" placeholder="Write a comment or update…"></textarea>
+                  <div style="display:flex; justify-content:flex-end; margin-top:0.4rem;">
+                    <button type="button" class="btn-primary" id="addCommentBtn" style="font-size:0.8rem; padding:0.35rem 0.8rem; width:auto;">Post Comment</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Activity Tab -->
+              <div class="task-tab-content" id="tabActivityContent" style="display:none;">
+                <div class="activity-log" id="activityLogContainer"></div>
+                <button type="button" class="btn-ghost activity-more-btn" id="activityMoreBtn" style="display:none;">Show older activity</button>
+              </div>
             </div>
           </div>
+
+          <!-- Right Column: Metadata Sidebar -->
+          <div class="task-modal-sidebar">
+            <div class="field-row" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.65rem;">
+              <div class="field">
+                <label for="taskPriority">Priority</label>
+                <select id="taskPriority">
+                  <option value="high">High</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="taskPoints">Story Points</label>
+                <input type="number" id="taskPoints" min="0" max="10" value="1" placeholder="0 - 10">
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="taskDueDate">Due Date</label>
+              <input type="date" id="taskDueDate">
+            </div>
+
+            <div class="field">
+              <label>Labels / Tags</label>
+              <div class="tag-selector-wrapper">
+                <div class="tag-selector-chips" id="tagChipsContainer">
+                  <button type="button" class="tag-option-btn" data-tag="Frontend">Frontend</button>
+                  <button type="button" class="tag-option-btn" data-tag="Backend">Backend</button>
+                  <button type="button" class="tag-option-btn" data-tag="Bug">Bug</button>
+                  <button type="button" class="tag-option-btn" data-tag="Feature">Feature</button>
+                  <button type="button" class="tag-option-btn" data-tag="DevOps">DevOps</button>
+                  <button type="button" class="tag-option-btn" data-tag="Design">Design</button>
+                </div>
+                <div style="display:flex; gap:0.4rem; margin-top:0.35rem;">
+                  <input type="text" id="customTagInput" placeholder="Add custom tag…" style="font-size:0.8rem; padding:0.35rem 0.5rem; flex:1;">
+                  <button type="button" class="btn-secondary" id="addCustomTagBtn" style="font-size:0.8rem; padding:0.35rem 0.6rem;">+ Add</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="taskAssignees">Assignees</label>
+              <select id="taskAssignees" multiple size="3" style="font-size:0.82rem;"></select>
+              <span style="font-size:0.72rem; color:var(--ink-muted); margin-top:0.2rem; display:block;" id="assigneeHint">Hold Ctrl/Cmd to select multiple teammates.</span>
+            </div>
+          </div>
         </div>
-        <div class="field" id="taskActivitySection" style="display:none;">
-          <label style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Activity</span>
-            <span id="activityCountBadge" style="font-size:0.75rem; color:var(--ink-muted); font-family:var(--font-mono);"></span>
-          </label>
-          <div class="activity-log" id="activityLogContainer"></div>
-          <button type="button" class="btn-ghost activity-more-btn" id="activityMoreBtn" style="display:none;">Show older activity</button>
-        </div>
-        <div class="modal-actions">
+
+        <!-- Sticky Always-Visible Footer -->
+        <div class="task-modal-footer">
           <button type="button" class="btn-danger" id="deleteTaskBtn" style="display:none; margin-right:auto;">Delete task</button>
           <button type="button" class="btn-ghost" id="cancelTaskBtn">Cancel</button>
-          <button type="submit" class="btn-primary" style="width:auto; padding-left:1.2rem; padding-right:1.2rem;">Save task</button>
+          <button type="submit" class="btn-primary" style="width:auto; padding-left:1.3rem; padding-right:1.3rem;">Save task</button>
         </div>
       </form>
     </div>
