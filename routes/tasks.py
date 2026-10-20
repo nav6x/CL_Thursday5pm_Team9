@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, g
 from config import supabase, maybe_one
 from auth_utils import login_required, get_role_in_project
@@ -15,6 +16,14 @@ def _is_assignee(task_id, user_id):
         .eq("user_id", user_id)
     )
     return result is not None
+
+
+def _is_done_column(column_id):
+    if not column_id:
+        return False
+    col = maybe_one(supabase.table("columns").select("name").eq("id", column_id))
+    name = ((col or {}).get("name") or "").lower()
+    return "done" in name or "complete" in name
 
 
 def _get_task_or_404(task_id):
@@ -161,6 +170,12 @@ def update_task(project_id, task_id):
 
     if not updates:
         return jsonify({"error": "Nothing to update"}), 400
+
+    if "column_id" in updates and updates["column_id"] != task.get("column_id"):
+        if _is_done_column(updates["column_id"]):
+            updates["completed_at"] = datetime.now(timezone.utc).isoformat()
+        else:
+            updates["completed_at"] = None
 
     events = _safely(lambda: activity.diff_task_update(
         task,
