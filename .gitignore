@@ -8,6 +8,10 @@ __pycache__/
 # pytest cache
 .pytest_cache/
 
+# Coverage reports
+.coverage
+htmlcov/
+
 # Virtual environment
 .venv/
 venv/

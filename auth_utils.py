@@ -63,7 +63,11 @@ def require_role(*allowed_roles):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
-            project_id = kwargs.get("project_id") or request.view_args.get("project_id")
+            project_id = (
+                kwargs.get("project_id")
+                or (args[0] if args else None)
+                or (request.view_args.get("project_id") if request.view_args else None)
+            )
             if not project_id:
                 return jsonify({"error": "project_id is required for this action"}), 400
 
