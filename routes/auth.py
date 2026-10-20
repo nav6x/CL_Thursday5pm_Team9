@@ -306,6 +306,26 @@ RESET_REDIRECT_URL = os.environ.get("RESET_REDIRECT_URL", "http://localhost:5000
 MIN_PASSWORD_LENGTH = 8
 
 
+def get_reset_redirect_url():
+    """Determines the redirect URL for password reset links.
+    If an explicit RESET_REDIRECT_URL env var is configured, it is used.
+    Otherwise, if the request comes from a deployed domain (non-localhost),
+    it dynamically crafts the URL using the request host and protocol.
+    Falls back to RESET_REDIRECT_URL (localhost:5000) for local development and tests.
+    """
+    if os.environ.get("RESET_REDIRECT_URL"):
+        return os.environ["RESET_REDIRECT_URL"]
+    try:
+        if request and request.host:
+            host_lower = request.host.lower()
+            if not host_lower.startswith("localhost") and not host_lower.startswith("127.0.0.1"):
+                scheme = request.headers.get("X-Forwarded-Proto", request.scheme)
+                return f"{scheme}://{request.host}/reset-password.html"
+    except Exception:
+        pass
+    return RESET_REDIRECT_URL
+
+
 @auth_bp.route("/forgot-password", methods=["POST"])
 def forgot_password():
     """Sends a password reset email. Always answers the same way so account existence isn't revealed."""
@@ -314,8 +334,9 @@ def forgot_password():
     if not email:
         return jsonify({"error": "email is required"}), 400
 
+    redirect_url = get_reset_redirect_url()
     try:
-        supabase_auth.auth.reset_password_for_email(email, {"redirect_to": RESET_REDIRECT_URL})
+        supabase_auth.auth.reset_password_for_email(email, {"redirect_to": redirect_url})
     except Exception:
         pass
 

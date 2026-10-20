@@ -167,3 +167,28 @@ def test_reset_rejects_invalid_access_token(ctx):
     assert res.status_code == 400
     assert "invalid or has expired" in res.get_json()["error"]
     ctx.service.auth.admin.update_user_by_id.assert_not_called()
+
+
+def test_forgot_uses_deployed_host_when_request_is_not_localhost(ctx):
+    res = ctx.client.post(
+        FORGOT,
+        json={"email": "deploy@example.com"},
+        headers={"Host": "scrumptious-app.onrender.com", "X-Forwarded-Proto": "https"},
+    )
+    assert res.status_code == 200
+    ctx.anon.auth.reset_password_for_email.assert_called_once_with(
+        "deploy@example.com", {"redirect_to": "https://scrumptious-app.onrender.com/reset-password.html"}
+    )
+
+
+def test_forgot_uses_env_override_when_set(ctx, monkeypatch):
+    monkeypatch.setenv("RESET_REDIRECT_URL", "https://custom-domain.com/auth/reset")
+    res = ctx.client.post(
+        FORGOT,
+        json={"email": "custom@example.com"},
+        headers={"Host": "scrumptious-app.onrender.com"},
+    )
+    assert res.status_code == 200
+    ctx.anon.auth.reset_password_for_email.assert_called_once_with(
+        "custom@example.com", {"redirect_to": "https://custom-domain.com/auth/reset"}
+    )
